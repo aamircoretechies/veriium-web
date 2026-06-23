@@ -1,0 +1,5 @@
+/* Import original project styles so the migrated Next app matches the React app */
+@import "../src/styles/index.css";
+
+html,body,#__next{height:100%;}
+body{margin:0}

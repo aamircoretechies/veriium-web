@@ -1,0 +1,1 @@
+Placeholder pages for public routes. Replace with actual migrated components.
