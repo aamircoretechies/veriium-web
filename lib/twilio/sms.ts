@@ -16,6 +16,15 @@ export async function sendSms(
   to: string,
   body: string,
 ): Promise<SendSmsResult> {
+  if (process.env.MATCHING_MANUAL_TEST === "1") {
+    return {
+      sid: `SMmock${Date.now()}`,
+      status: "queued",
+      to,
+      body,
+    };
+  }
+
   const env = getEnv();
 
   const payload: Record<string, string> = {

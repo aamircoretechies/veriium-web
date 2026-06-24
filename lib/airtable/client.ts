@@ -222,9 +222,19 @@ function createClient(): AirtableClient {
 }
 
 let cachedClient: AirtableClient | undefined;
+let testClientOverride: AirtableClient | undefined;
+
+/** Replace the singleton client (matching manual tests). Pass `undefined` to reset. */
+export function setAirtableClientForTests(client: AirtableClient | undefined): void {
+  testClientOverride = client;
+  cachedClient = client;
+}
 
 /** Lazily constructed singleton Airtable REST client. */
 export function getAirtableClient(): AirtableClient {
+  if (testClientOverride) {
+    return testClientOverride;
+  }
   if (!cachedClient) {
     cachedClient = createClient();
   }

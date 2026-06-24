@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "matching:manual-test": "npx tsx scripts/matching-manual-test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

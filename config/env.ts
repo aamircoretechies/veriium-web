@@ -52,7 +52,15 @@ export const phase3EnvSchema = z.object({
 });
 
 /**
- * Documented for later phases. Optional — not required for Phase 0–3 validation.
+ * Required for Phase 4 matching (Tier 4 admin SMS, dev start-matching endpoint).
+ */
+export const phase4EnvSchema = z.object({
+  VERIIUM_ADMIN_PHONE: z.string().min(1),
+  MATCHING_DEV_SECRET: z.string().min(16),
+});
+
+/**
+ * Documented for later phases. Optional — not required for Phase 0–4 validation.
  */
 export const futureEnvSchema = z.object({
   // Phase 1, 4 — Twilio fallback
@@ -75,12 +83,14 @@ export const envSchema = phase0EnvSchema
   .merge(phase1EnvSchema)
   .merge(phase2EnvSchema)
   .merge(phase3EnvSchema)
+  .merge(phase4EnvSchema)
   .merge(futureEnvSchema);
 
 export type Phase0Env = z.infer<typeof phase0EnvSchema>;
 export type Phase1Env = z.infer<typeof phase1EnvSchema>;
 export type Phase2Env = z.infer<typeof phase2EnvSchema>;
 export type Phase3Env = z.infer<typeof phase3EnvSchema>;
+export type Phase4Env = z.infer<typeof phase4EnvSchema>;
 export type FutureEnv = z.infer<typeof futureEnvSchema>;
 export type Env = z.infer<typeof envSchema>;
 
@@ -94,7 +104,7 @@ function formatEnvErrors(error: z.ZodError): string {
 }
 
 /**
- * Lazily parse and cache environment variables. Phase 0–3 keys are required;
+ * Lazily parse and cache environment variables. Phase 0–4 keys are required;
  * future-phase keys are optional until those features ship.
  */
 export function getEnv(): Env {
