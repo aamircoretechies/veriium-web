@@ -1,12 +1,25 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { GWINNETT_ZIP_CODES } from "@/lib/constants/gwinnett-zips";
+import type { BookingResponse } from "@/types/api/booking";
 import type { DiagnosisResponse } from "@/types/api/diagnosis";
 import type {
   DiagnosisCategory,
   Driveability,
   FixNowVsWait,
 } from "@/types/airtable/enums";
+
+const GWINNETT_ZIP_SET = new Set<string>(GWINNETT_ZIP_CODES);
+
+async function parseApiError(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    return data?.error?.message ?? "Something went wrong. Please try again.";
+  } catch {
+    return "Something went wrong. Please try again.";
+  }
+}
 
 const CATEGORY_LABELS: Record<DiagnosisCategory, string> = {
   battery_starting: "Battery & Starting",
@@ -76,8 +89,129 @@ export default function DiagnosticModal({
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [vin, setVin] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const { title: diagnosisTitle, body: diagnosisBody } = splitSummary(diagnosis.summary);
+
+  function validateForm(): string | null {
+    if (!name.trim()) return "Please enter your name.";
+    const zipTrimmed = zip.trim();
+    if (!/^\d{5}$/.test(zipTrimmed)) return "ZIP code must be 5 digits.";
+    if (!GWINNETT_ZIP_SET.has(zipTrimmed)) {
+      return "This ZIP code is outside our current service area.";
+    }
+    if (!phone.trim()) return "Please enter your phone number.";
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return "Please enter a valid email address.";
+    }
+    if (year.trim()) {
+      const yearNum = Number(year.trim());
+      if (!Number.isInteger(yearNum) || yearNum <= 0) {
+        return "Please enter a valid vehicle year.";
+      }
+    }
+    if (!smsConsent) return "Please agree to receive request-related SMS texts.";
+    if (!phoneConsent) {
+      return "Please acknowledge that providing your phone number creates a Veriium account.";
+    }
+    return null;
+  }
+
+  async function handleSendCode() {
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/driver/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+
+      if (!res.ok) {
+        setError(await parseApiError(res));
+        return;
+      }
+
+      setOtpSent(true);
+      setVerificationCode("");
+    } catch {
+      setError("Unable to send verification code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmitBooking() {
+    if (!/^\d{6}$/.test(verificationCode)) {
+      setError("Please enter the 6-digit code we sent to your phone.");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+
+    const vehicle =
+      year.trim() || make.trim() || model.trim() || vin.trim()
+        ? {
+            ...(year.trim() ? { year: Number(year.trim()) } : {}),
+            ...(make.trim() ? { make: make.trim() } : {}),
+            ...(model.trim() ? { model: model.trim() } : {}),
+            ...(vin.trim() ? { vin: vin.trim() } : {}),
+          }
+        : undefined;
+
+    try {
+      const res = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          diagnosisId: diagnosis.diagnosisId,
+          name: name.trim(),
+          zip: zip.trim(),
+          phone,
+          ...(email.trim() ? { email: email.trim() } : {}),
+          serviceType,
+          ...(vehicle ? { vehicle } : {}),
+          ...(details.trim() ? { additionalDetails: details.trim() } : {}),
+          smsConsent: true,
+          phoneConsent: true,
+          verificationCode,
+        }),
+      });
+
+      if (!res.ok) {
+        setError(await parseApiError(res));
+        return;
+      }
+
+      const data = (await res.json()) as BookingResponse;
+      onFindMechanic?.();
+      const jobUrl = new URL(data.signedUrl);
+      router.push(`${jobUrl.pathname}${jobUrl.search}`);
+    } catch {
+      setError("Unable to complete your booking. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleFindMechanicClick() {
+    if (otpSent) {
+      void handleSubmitBooking();
+    } else {
+      void handleSendCode();
+    }
+  }
 
   return (
     <div id="diagnostic-form" className="bg-white rounded-[24px] shadow-[1px_4px_32px_0px_rgba(0,0,0,0.1)] w-full shrink-0 overflow-hidden">
@@ -376,21 +510,70 @@ export default function DiagnosticModal({
             </label>
           </div>
 
+          {otpSent && (
+            <div className="mb-4">
+              <label className="block text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1.5">
+                Verification code <span className="text-[#e44]">*</span>
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="\d{6}"
+                maxLength={6}
+                placeholder="000000"
+                value={verificationCode}
+                onChange={(e) =>
+                  setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                className="w-full max-w-[200px] border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 tracking-[0.3em] text-center font-['Albert_Sans:Regular',sans-serif]"
+                autoFocus
+              />
+              <p className="text-[12px] text-[#888] mt-1.5 font-['Albert_Sans:Regular',sans-serif]">
+                Enter the 6-digit code sent to your phone.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setOtpSent(false);
+                  setVerificationCode("");
+                  setError("");
+                }}
+                className="text-[12px] text-[#888] hover:text-black transition-colors mt-1 bg-transparent border-none cursor-pointer p-0 font-['Albert_Sans:Regular',sans-serif]"
+              >
+                Use a different phone number
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-[13px] text-red-500 font-['Albert_Sans:Regular',sans-serif] mb-2">
+              {error}
+            </p>
+          )}
+
           {/* Action Buttons */}
           <div className="flex gap-4 mt-4 w-full max-w-[500px]">
             <button
               type="button"
               onClick={() => router.push('/public/schedule-later')}
-              className="flex-1 bg-[#ebebeb] hover:bg-[#e0e0e0] border border-black rounded-[10px] py-3.5 font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black hover:brightness-105 active:scale-95 transition-all duration-150 shadow-sm cursor-pointer text-center"
+              disabled={loading}
+              className="flex-1 bg-[#ebebeb] hover:bg-[#e0e0e0] border border-black rounded-[10px] py-3.5 font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black hover:brightness-105 active:scale-95 transition-all duration-150 shadow-sm cursor-pointer text-center disabled:opacity-70"
             >
               Schedule Later
             </button>
             <button
               type="button"
-              onClick={onFindMechanic}
-              className="flex-1 bg-[#ffa270] rounded-[10px] py-3.5 font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black hover:brightness-110 active:scale-95 transition-all duration-150 shadow-sm cursor-pointer text-center"
+              onClick={handleFindMechanicClick}
+              disabled={loading}
+              className="flex-1 bg-[#ffa270] rounded-[10px] py-3.5 font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black hover:brightness-110 active:scale-95 transition-all duration-150 shadow-sm cursor-pointer text-center disabled:opacity-70"
             >
-              Find Mechanic Now
+              {loading
+                ? otpSent
+                  ? "Booking…"
+                  : "Sending code…"
+                : otpSent
+                  ? "Confirm & Book"
+                  : "Find Mechanic Now"}
             </button>
           </div>
         </div>

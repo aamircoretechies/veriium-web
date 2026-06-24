@@ -718,10 +718,7 @@ export default function LandingDesktopV2() {
           <DiagnosticModal
             diagnosis={diagnosisResult}
             onClose={() => setDiagnosisOpen(false)}
-            onFindMechanic={() => {
-              setDiagnosisOpen(false);
-              router.push('/public/diagnosis');
-            }}
+            onFindMechanic={() => setDiagnosisOpen(false)}
           />
         )}
         <ThreeSteps />

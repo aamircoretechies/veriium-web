@@ -23,6 +23,13 @@ export type JobFields = {
   appointment_window_start?: AirtableDateTime;
   safety_flag?: boolean;
 
+  // Vehicle intake (§5.4) — column names aligned with live Airtable Jobs table
+  vehicle_year?: number;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vin?: string;
+  additional_details?: string;
+
   // Quote & payout (§7.2–7.3)
   quote_amount?: number;
   parts_cost?: number;

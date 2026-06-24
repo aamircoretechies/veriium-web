@@ -45,7 +45,14 @@ export const phase2EnvSchema = z.object({
 });
 
 /**
- * Documented for later phases. Optional — not required for Phase 0–2 validation.
+ * Required for Phase 3 booking (HMAC-signed driver job URLs).
+ */
+export const phase3EnvSchema = z.object({
+  SIGNED_URL_SECRET: z.string().min(32),
+});
+
+/**
+ * Documented for later phases. Optional — not required for Phase 0–3 validation.
  */
 export const futureEnvSchema = z.object({
   // Phase 1, 4 — Twilio fallback
@@ -59,8 +66,6 @@ export const futureEnvSchema = z.object({
   NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
   // Phase 1 — SMS templates
   VERIIUM_SUPPORT_PHONE: z.string().optional(),
-  // Phase 3 — signed driver URLs
-  SIGNED_URL_SECRET: z.string().optional(),
   // Phase 5 — Stripe
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -69,11 +74,13 @@ export const futureEnvSchema = z.object({
 export const envSchema = phase0EnvSchema
   .merge(phase1EnvSchema)
   .merge(phase2EnvSchema)
+  .merge(phase3EnvSchema)
   .merge(futureEnvSchema);
 
 export type Phase0Env = z.infer<typeof phase0EnvSchema>;
 export type Phase1Env = z.infer<typeof phase1EnvSchema>;
 export type Phase2Env = z.infer<typeof phase2EnvSchema>;
+export type Phase3Env = z.infer<typeof phase3EnvSchema>;
 export type FutureEnv = z.infer<typeof futureEnvSchema>;
 export type Env = z.infer<typeof envSchema>;
 
@@ -87,7 +94,7 @@ function formatEnvErrors(error: z.ZodError): string {
 }
 
 /**
- * Lazily parse and cache environment variables. Phase 0–2 keys are required;
+ * Lazily parse and cache environment variables. Phase 0–3 keys are required;
  * future-phase keys are optional until those features ship.
  */
 export function getEnv(): Env {

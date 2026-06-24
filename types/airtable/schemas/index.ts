@@ -116,6 +116,11 @@ export const createJobSchema = z.object({
   service_type: serviceTypeSchema.optional(),
   appointment_window_start: z.string().datetime().optional(),
   safety_flag: z.boolean().optional(),
+  vehicle_year: z.number().int().positive().optional(),
+  vehicle_make: z.string().min(1).optional(),
+  vehicle_model: z.string().min(1).optional(),
+  vin: z.string().min(1).optional(),
+  additional_details: z.string().optional(),
 });
 
 export const updateJobSchema = z
@@ -128,6 +133,11 @@ export const updateJobSchema = z
     service_type: serviceTypeSchema.optional(),
     appointment_window_start: z.string().datetime().optional(),
     safety_flag: z.boolean().optional(),
+    vehicle_year: z.number().int().positive().optional(),
+    vehicle_make: z.string().min(1).optional(),
+    vehicle_model: z.string().min(1).optional(),
+    vin: z.string().min(1).optional(),
+    additional_details: z.string().optional(),
     quote_amount: z.number().nonnegative().optional(),
     parts_cost: z.number().nonnegative().optional(),
     final_price: z.number().nonnegative().optional(),

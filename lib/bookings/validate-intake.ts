@@ -1,0 +1,119 @@
+import { GWINNETT_ZIP_CODES } from "@/lib/constants/gwinnett-zips";
+import type { BookingRequest, BookingVehicle } from "@/types/api/booking";
+import type { ServiceType } from "@/types/airtable/enums";
+import type { JobFields } from "@/types/airtable/jobs";
+import { OutOfServiceAreaError } from "./errors";
+
+const GWINNETT_ZIP_SET = new Set<string>(GWINNETT_ZIP_CODES);
+
+export type ValidatedBookingIntake = {
+  diagnosisId: string;
+  name: string;
+  zip: string;
+  phone: string;
+  email?: string;
+  serviceType: ServiceType;
+  vehicle?: BookingVehicle;
+  additionalDetails?: string;
+  verificationCode: string;
+};
+
+export type JobIntakeFields = Pick<
+  JobFields,
+  | "vehicle_year"
+  | "vehicle_make"
+  | "vehicle_model"
+  | "vin"
+  | "additional_details"
+>;
+
+/** Map UI `onsite` to Airtable `mobile_repair`. */
+export function normalizeServiceType(
+  serviceType: BookingRequest["serviceType"],
+): ServiceType {
+  if (serviceType === "onsite" || serviceType === "mobile_repair") {
+    return "mobile_repair";
+  }
+  return "dropoff";
+}
+
+export function isGwinnettZip(zip: string): boolean {
+  return GWINNETT_ZIP_SET.has(zip.trim());
+}
+
+export function assertGwinnettZip(zip: string): void {
+  if (!isGwinnettZip(zip)) {
+    throw new OutOfServiceAreaError();
+  }
+}
+
+function normalizeVehicle(
+  vehicle?: BookingVehicle,
+): BookingVehicle | undefined {
+  if (!vehicle) {
+    return undefined;
+  }
+
+  const normalized: BookingVehicle = {
+    year: vehicle.year,
+    make: vehicle.make?.trim() || undefined,
+    model: vehicle.model?.trim() || undefined,
+    vin: vehicle.vin?.trim() || undefined,
+  };
+
+  if (
+    normalized.year === undefined &&
+    !normalized.make &&
+    !normalized.model &&
+    !normalized.vin
+  ) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+/** Business rules on top of Zod parsing (ZIP allowlist, service type, trimming). */
+export function validateBookingIntake(
+  request: BookingRequest,
+): ValidatedBookingIntake {
+  const zip = request.zip.trim();
+  assertGwinnettZip(zip);
+
+  return {
+    diagnosisId: request.diagnosisId,
+    name: request.name.trim(),
+    zip,
+    phone: request.phone.trim(),
+    email: request.email?.trim() || undefined,
+    serviceType: normalizeServiceType(request.serviceType),
+    vehicle: normalizeVehicle(request.vehicle),
+    additionalDetails: request.additionalDetails?.trim() || undefined,
+    verificationCode: request.verificationCode,
+  };
+}
+
+/** Map validated intake to Airtable Jobs columns (§5.4). */
+export function toJobIntakeFields(
+  intake: Pick<ValidatedBookingIntake, "vehicle" | "additionalDetails">,
+): JobIntakeFields {
+  const fields: JobIntakeFields = {};
+
+  if (intake.vehicle?.year !== undefined) {
+    fields.vehicle_year = intake.vehicle.year;
+  }
+  if (intake.vehicle?.make) {
+    fields.vehicle_make = intake.vehicle.make;
+  }
+  if (intake.vehicle?.model) {
+    fields.vehicle_model = intake.vehicle.model;
+  }
+  if (intake.vehicle?.vin) {
+    fields.vin = intake.vehicle.vin;
+  }
+  if (intake.additionalDetails) {
+    fields.additional_details = intake.additionalDetails;
+  }
+
+  return fields;
+}
