@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  ReactNode,
+} from "react";
 
 export type MechanicAccountState =
   | "application_submitted"
@@ -22,11 +29,15 @@ export interface MechanicUser {
 
 interface MechanicAuthContextType {
   mechanic: MechanicUser | null;
-  signIn: (user: MechanicUser) => void;
+  hydrated: boolean;
+  signIn: (user: MechanicUser, token?: string) => void;
   signOut: () => void;
   setAvailability: (on: boolean) => void;
   completeSetup: () => void;
 }
+
+const TOKEN_KEY = "veriium_mechanic_token";
+const USER_KEY = "veriium_mechanic_user";
 
 const MechanicAuthContext = createContext<MechanicAuthContextType | null>(null);
 
@@ -87,23 +98,69 @@ export const MOCK_MECHANICS: Record<MechanicAccountState, MechanicUser> = {
   },
 };
 
+function persistSession(user: MechanicUser, token?: string) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+}
+
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
 export function MechanicAuthProvider({ children }: { children: ReactNode }) {
   const [mechanic, setMechanic] = useState<MechanicUser | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
-  const signIn = (user: MechanicUser) => setMechanic({ ...user });
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const userJson = localStorage.getItem(USER_KEY);
+      if (token && userJson) {
+        setMechanic(JSON.parse(userJson) as MechanicUser);
+      }
+    } catch {
+      clearSession();
+    }
+    setHydrated(true);
+  }, []);
 
-  const signOut = () => setMechanic(null);
+  const signIn = useCallback((user: MechanicUser, token?: string) => {
+    setMechanic({ ...user });
+    if (token) {
+      persistSession(user, token);
+    }
+  }, []);
 
-  const setAvailability = (on: boolean) => {
-    setMechanic((prev) => (prev ? { ...prev, availabilityOn: on } : prev));
-  };
+  const signOut = useCallback(() => {
+    setMechanic(null);
+    clearSession();
+  }, []);
 
-  const completeSetup = () => {
-    setMechanic((prev) => (prev ? { ...prev, setupComplete: true, availabilityOn: false } : prev));
-  };
+  const setAvailability = useCallback((on: boolean) => {
+    setMechanic((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, availabilityOn: on };
+      persistSession(updated);
+      return updated;
+    });
+  }, []);
+
+  const completeSetup = useCallback(() => {
+    setMechanic((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, setupComplete: true, availabilityOn: false };
+      persistSession(updated);
+      return updated;
+    });
+  }, []);
 
   return (
-    <MechanicAuthContext.Provider value={{ mechanic, signIn, signOut, setAvailability, completeSetup }}>
+    <MechanicAuthContext.Provider
+      value={{ mechanic, hydrated, signIn, signOut, setAvailability, completeSetup }}
+    >
       {children}
     </MechanicAuthContext.Provider>
   );

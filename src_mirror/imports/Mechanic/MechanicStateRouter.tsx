@@ -5,16 +5,16 @@ import { useMechanicAuth } from "./MechanicAuthContext";
 import MechanicSetupWizard from "./MechanicSetupWizard";
 
 export default function MechanicStateRouter({ children }: { children: ReactNode }) {
-  const { mechanic, signOut } = useMechanicAuth();
+  const { mechanic, hydrated, signOut } = useMechanicAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!mechanic) {
+    if (hydrated && !mechanic) {
       router.replace("/m/signin");
     }
-  }, [mechanic, router]);
+  }, [mechanic, hydrated, router]);
 
-  if (!mechanic) {
+  if (!hydrated || !mechanic) {
     return null;
   }
 

@@ -1,6 +1,7 @@
 ﻿"use client";
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { uploadToCloudinary } from '@/lib/cloudinary/upload';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -11,10 +12,24 @@ import { Switch } from '@/app/components/ui/switch';
 import Footer from '../../../app/components/Footer';
 import PublicHeader from '@/app/components/PublicHeader';
 
+async function parseApiError(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    return data?.error?.message ?? "Something went wrong. Please try again.";
+  } catch {
+    return "Something went wrong. Please try again.";
+  }
+}
+
 export default function ApplyAsMechanic() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [driverLicenseFile, setDriverLicenseFile] = useState<File | null>(null);
+  const [aseCertificationFile, setAseCertificationFile] = useState<File | null>(null);
+  const [insuranceDocumentFile, setInsuranceDocumentFile] = useState<File | null>(null);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -69,20 +84,89 @@ export default function ApplyAsMechanic() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.agreements.terms || !formData.agreements.background || !formData.agreements.communication) {
       alert("Please agree to all terms and consents to proceed.");
       return;
     }
-    
+    if (!driverLicenseFile) {
+      setSubmitError("Please upload your driver license or government ID.");
+      return;
+    }
+
+    setSubmitError("");
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
+
+    try {
+      let profilePhotoUrl: string | undefined;
+      let driverLicenseUrl: string | undefined;
+      let aseCertificationUrl: string | undefined;
+      let insuranceDocumentUrl: string | undefined;
+
+      if (profilePhotoFile) {
+        profilePhotoUrl = await uploadToCloudinary(profilePhotoFile);
+      }
+      driverLicenseUrl = await uploadToCloudinary(driverLicenseFile);
+      if (aseCertificationFile) {
+        aseCertificationUrl = await uploadToCloudinary(aseCertificationFile);
+      }
+      if (insuranceDocumentFile) {
+        insuranceDocumentUrl = await uploadToCloudinary(insuranceDocumentFile);
+      }
+
+      const yearsExperience = formData.yearsExp
+        ? parseInt(formData.yearsExp, 10)
+        : undefined;
+      const serviceRadius = formData.serviceRadius
+        ? parseInt(formData.serviceRadius, 10)
+        : undefined;
+
+      const payload = {
+        fullName: formData.fullName,
+        phone: formData.phone,
+        email: formData.email || undefined,
+        bio: formData.bio || undefined,
+        languages: formData.languages || undefined,
+        yearsExperience: Number.isNaN(yearsExperience) ? undefined : yearsExperience,
+        aseCertified: formData.aseCertified,
+        otherCertifications: formData.otherCerts || undefined,
+        services: formData.services,
+        mobileAvailable: formData.mobileAvailable,
+        shopAvailable: formData.shopAvailable,
+        primaryZip: formData.primaryZip,
+        additionalZips: formData.additionalZips || undefined,
+        serviceRadius: Number.isNaN(serviceRadius) ? undefined : serviceRadius,
+        shopAddress: formData.shopAddress || undefined,
+        toolsConfirmed: formData.toolsConfirmed,
+        transportConfirmed: formData.transportConfirmed,
+        mobileRepairsConfirmed: formData.mobileRepairsConfirmed,
+        profilePhotoUrl,
+        driverLicenseUrl,
+        aseCertificationUrl,
+        insuranceDocumentUrl,
+      };
+
+      const res = await fetch("/api/mechanics/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        setSubmitError(await parseApiError(res));
+        return;
+      }
+
       setSuccess(true);
       window.scrollTo(0, 0);
-    }, 1500);
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error ? err.message : "Unable to submit application. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (success) {
@@ -156,7 +240,12 @@ export default function ApplyAsMechanic() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="profilePhoto" className="font-['Albert_Sans:Medium',sans-serif]">Profile Photo (Optional)</Label>
-                <Input id="profilePhoto" type="file" accept="image/*" />
+                <Input
+                  id="profilePhoto"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setProfilePhotoFile(e.target.files?.[0] ?? null)}
+                />
               </div>
             </CardContent>
           </Card>
@@ -266,15 +355,20 @@ export default function ApplyAsMechanic() {
             <CardContent className="pt-6 grid gap-6">
               <div className="grid gap-2">
                 <Label htmlFor="driverLicense" className="font-['Albert_Sans:Medium',sans-serif]">Driver License / Government ID *</Label>
-                <Input id="driverLicense" type="file" required accept=".pdf,image/*" />
+                <Input
+                  id="driverLicense"
+                  type="file"
+                  accept=".pdf,image/*"
+                  onChange={(e) => setDriverLicenseFile(e.target.files?.[0] ?? null)}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="aseDoc" className="font-['Albert_Sans:Medium',sans-serif]">ASE Certification Upload (if applicable)</Label>
-                <Input id="aseDoc" type="file" accept=".pdf,image/*" />
+                <Input id="aseDoc" type="file" accept=".pdf,image/*" onChange={(e) => setAseCertificationFile(e.target.files?.[0] ?? null)} />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="insuranceDoc" className="font-['Albert_Sans:Medium',sans-serif]">Insurance Document (if applicable)</Label>
-                <Input id="insuranceDoc" type="file" accept=".pdf,image/*" />
+                <Input id="insuranceDoc" type="file" accept=".pdf,image/*" onChange={(e) => setInsuranceDocumentFile(e.target.files?.[0] ?? null)} />
               </div>
             </CardContent>
           </Card>
@@ -304,6 +398,9 @@ export default function ApplyAsMechanic() {
           <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 flex flex-col items-center">
             <h3 className="font-['Albert_Sans:Bold',sans-serif] text-xl mb-2">Ready to submit?</h3>
             <p className="text-gray-500 mb-6 text-center font-['Albert_Sans:Regular',sans-serif]">Please review your information before submitting. You will not be able to edit this after submission.</p>
+            {submitError && (
+              <p className="text-red-600 text-sm mb-4 text-center font-['Albert_Sans:Regular',sans-serif]">{submitError}</p>
+            )}
             <Button 
               type="submit" 
               disabled={loading}

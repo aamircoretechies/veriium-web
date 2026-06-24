@@ -23,25 +23,42 @@ export const phase0EnvSchema = z.object({
 });
 
 /**
- * Documented for later phases. Optional — not required for Phase 0 validation.
+ * Required for Phase 1 mechanic onboarding (Twilio OTP, SMS, webhooks, sessions).
+ */
+export const phase1EnvSchema = z.object({
+  TWILIO_ACCOUNT_SID: z.string().min(1),
+  TWILIO_AUTH_TOKEN: z.string().min(1),
+  TWILIO_VERIFY_SERVICE_SID: z.string().min(1),
+  TWILIO_MESSAGING_SERVICE_SID: z.string().min(1),
+  MECHANIC_SESSION_SECRET: z.string().min(32),
+  AIRTABLE_WEBHOOK_SECRET: z.string().min(1),
+});
+
+/**
+ * Required for Phase 2 AI diagnosis (OpenAI via native fetch).
+ */
+export const phase2EnvSchema = z.object({
+  OPENAI_API_KEY: z.string().min(1),
+  DIAGNOSIS_AI_MODEL: z.string().min(1).default("gpt-4o-mini"),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+});
+
+/**
+ * Documented for later phases. Optional — not required for Phase 0–2 validation.
  */
 export const futureEnvSchema = z.object({
-  // Phase 1, 4 — Twilio
-  TWILIO_ACCOUNT_SID: z.string().optional(),
-  TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_VERIFY_SERVICE_SID: z.string().optional(),
-  TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
+  // Phase 1, 4 — Twilio fallback
   TWILIO_PHONE_NUMBER: z.string().optional(),
-  // Phase 1 — Cloudinary
+  // Phase 1 — Cloudinary (server)
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
+  // Phase 1 — Cloudinary (client unsigned upload)
+  NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
   // Phase 1 — SMS templates
   VERIIUM_SUPPORT_PHONE: z.string().optional(),
-  // Phase 2 — AI diagnosis
-  OPENAI_API_KEY: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  GEMINI_API_KEY: z.string().optional(),
   // Phase 3 — signed driver URLs
   SIGNED_URL_SECRET: z.string().optional(),
   // Phase 5 — Stripe
@@ -49,9 +66,14 @@ export const futureEnvSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });
 
-export const envSchema = phase0EnvSchema.merge(futureEnvSchema);
+export const envSchema = phase0EnvSchema
+  .merge(phase1EnvSchema)
+  .merge(phase2EnvSchema)
+  .merge(futureEnvSchema);
 
 export type Phase0Env = z.infer<typeof phase0EnvSchema>;
+export type Phase1Env = z.infer<typeof phase1EnvSchema>;
+export type Phase2Env = z.infer<typeof phase2EnvSchema>;
 export type FutureEnv = z.infer<typeof futureEnvSchema>;
 export type Env = z.infer<typeof envSchema>;
 
@@ -65,7 +87,7 @@ function formatEnvErrors(error: z.ZodError): string {
 }
 
 /**
- * Lazily parse and cache environment variables. Phase 0 keys are required;
+ * Lazily parse and cache environment variables. Phase 0–2 keys are required;
  * future-phase keys are optional until those features ship.
  */
 export function getEnv(): Env {

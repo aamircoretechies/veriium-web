@@ -1,13 +1,68 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { DiagnosisResponse } from "@/types/api/diagnosis";
+import type {
+  DiagnosisCategory,
+  Driveability,
+  FixNowVsWait,
+} from "@/types/airtable/enums";
 
-interface DiagnosticSectionProps {
+const CATEGORY_LABELS: Record<DiagnosisCategory, string> = {
+  battery_starting: "Battery & Starting",
+  brakes: "Brakes",
+  oil_maintenance: "Oil & Maintenance",
+  engine_diagnostics: "Engine",
+  transmission: "Transmission",
+  tires_wheels: "Tires & Wheels",
+  electrical: "Electrical",
+  ac_heating: "A/C & Heating",
+  suspension_steering: "Suspension & Steering",
+  exhaust: "Exhaust",
+  fuel_system: "Fuel System",
+  general_maintenance: "General Maintenance",
+  unknown: "General",
+};
+
+const URGENCY_BADGES: Partial<Record<FixNowVsWait, string>> = {
+  now: "Fix now",
+  soon: "Time-sensitive",
+};
+
+const DRIVEABILITY_TEXT: Record<Driveability, string> = {
+  safe: "Your vehicle appears safe to drive for now, but have a mechanic verify the issue soon.",
+  caution: "Short trips may be possible, but continued driving increases the risk of further damage.",
+  do_not_drive: "Do not drive this vehicle until a mechanic inspects it.",
+};
+
+function formatCost(low: number, high: number): string {
+  const formatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+  return `${formatter.format(low)} – ${formatter.format(high)}`;
+}
+
+function splitSummary(summary: string): { title: string; body: string } {
+  const match = summary.match(/^(.+?[.!?])\s+([\s\S]+)$/);
+  if (match) {
+    return { title: match[1], body: match[2] };
+  }
+  return { title: summary, body: "" };
+}
+
+interface DiagnosticModalProps {
+  diagnosis: DiagnosisResponse;
   onClose: () => void;
   onFindMechanic?: () => void;
 }
 
-export default function DiagnosticSection({ onClose, onFindMechanic }: DiagnosticSectionProps) {
+export default function DiagnosticModal({
+  diagnosis,
+  onClose,
+  onFindMechanic,
+}: DiagnosticModalProps) {
   const router = useRouter();
   const [serviceType, setServiceType] = useState<"onsite" | "dropoff">("onsite");
   const [name, setName] = useState("");
@@ -21,6 +76,8 @@ export default function DiagnosticSection({ onClose, onFindMechanic }: Diagnosti
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [vin, setVin] = useState("");
+
+  const { title: diagnosisTitle, body: diagnosisBody } = splitSummary(diagnosis.summary);
 
   return (
     <div id="diagnostic-form" className="bg-white rounded-[24px] shadow-[1px_4px_32px_0px_rgba(0,0,0,0.1)] w-full shrink-0 overflow-hidden">
@@ -39,42 +96,41 @@ export default function DiagnosticSection({ onClose, onFindMechanic }: Diagnosti
       </div>
 
       <div className="px-6 sm:px-10 pb-6 sm:pb-10 flex flex-col gap-6">
+        {diagnosis.safety_flag && diagnosis.safety_message && (
+          <div className="bg-[#fff3ee] border border-[#ff6b35] rounded-[12px] px-4 py-3">
+            <p className="text-[15px] text-[#b33a00] font-['Albert_Sans:SemiBold',sans-serif] font-semibold leading-[1.5]">
+              {diagnosis.safety_message}
+            </p>
+          </div>
+        )}
+
         {/* Diagnosis Card */}
         <div className="bg-[#f7f7f7] rounded-[14px] p-4 sm:p-6 border border-[#ebebeb]">
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <span className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] sm:text-[20px] text-black">
-              Coolant leak detected.
+              {diagnosisTitle}
             </span>
-            <span className="bg-[#FF6B35] text-white text-[12px] font-['Albert_Sans:Bold',sans-serif] font-bold px-3 py-1 rounded-full whitespace-nowrap">
-              Time-sensitive
+            {URGENCY_BADGES[diagnosis.fix_now_vs_wait] && (
+              <span className="bg-[#FF6B35] text-white text-[12px] font-['Albert_Sans:Bold',sans-serif] font-bold px-3 py-1 rounded-full whitespace-nowrap">
+                {URGENCY_BADGES[diagnosis.fix_now_vs_wait]}
+              </span>
+            )}
+            <span className="bg-[#e8e8e8] text-[#444] text-[12px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold px-3 py-1 rounded-full whitespace-nowrap">
+              {CATEGORY_LABELS[diagnosis.category]}
             </span>
           </div>
 
           <p className="text-[15px] text-[#444] font-['Albert_Sans:Regular',sans-serif] leading-[1.7] mb-4">
-            Based on your description, this appears to be a{" "}
-            <strong className="font-semibold text-black">coolant leak</strong> in your car. A coolant is a liquid that keeps your car's engine from getting too hot. A leak means some of that liquid is escaping, which can cause the engine to overheat if it's not fixed. A verified mechanic will confirm the diagnosis before any work begins.
+            {diagnosisBody ? `${diagnosisBody} ` : ""}
+            A verified mechanic will confirm the diagnosis before any work begins.
           </p>
-
-          <div className="mb-4">
-            <p className="text-[15px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1">
-              What does this mean for you?
-            </p>
-            <ul className="list-disc ml-5 text-[15px] text-[#444] font-['Albert_Sans:Regular',sans-serif] leading-[1.8]">
-              <li>
-                If <strong className="text-black font-semibold">addressed soon</strong>: helps prevent engine overheating and more expensive repairs
-              </li>
-              <li>
-                If <strong className="text-black font-semibold">ignored</strong>: Can lead to overheating, breaks down, or engine damage
-              </li>
-            </ul>
-          </div>
 
           <div className="mb-4">
             <p className="text-[15px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1">
               Can I keep driving?
             </p>
             <p className="text-[15px] text-[#444] font-['Albert_Sans:Regular',sans-serif] leading-[1.7]">
-              Short trips may be possible, but continued driving increases the risk of overheating.
+              {DRIVEABILITY_TEXT[diagnosis.driveability]}
             </p>
           </div>
 
@@ -86,7 +142,10 @@ export default function DiagnosticSection({ onClose, onFindMechanic }: Diagnosti
         {/* Estimated Repair Cost */}
         <div className="bg-[#f7f7f7] rounded-[12px] px-4 sm:px-6 py-3 sm:py-4 border border-[#ebebeb]">
           <p className="font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-[15px] sm:text-[16px] text-black">
-            Estimated repair cost: <span className="text-[#222]">$200 – $350</span>
+            Estimated repair cost:{" "}
+            <span className="text-[#222]">
+              {formatCost(diagnosis.cost_estimate_low, diagnosis.cost_estimate_high)}
+            </span>
           </p>
           <p className="text-[12px] text-[#aaa] font-['Albert_Sans:Regular',sans-serif] mt-0.5">
             Final cost is confirmed by mechanic before any work begins.

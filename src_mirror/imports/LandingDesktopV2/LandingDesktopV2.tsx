@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { DiagnosisResponse } from "@/types/api/diagnosis";
 import svgPaths from "./svg-g4c32cbyyy";
 import DiagnosticModal from "./DiagnosticModal";
 import Footer from "../../../app/components/Footer";
@@ -44,13 +45,23 @@ function Heading() {
   );
 }
 
-function Frame11({ onStartDiagnosis }: { onStartDiagnosis?: () => void }) {
+function Frame11({
+  onStartDiagnosis,
+  disabled,
+}: {
+  onStartDiagnosis?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <div className="content-stretch flex items-center relative shrink-0">
       <div
-        className="bg-[#ffa270] content-stretch flex flex-col items-center justify-center overflow-clip px-[20px] md:px-[28px] py-[12px] md:py-[28px] relative rounded-[8px] md:rounded-[12px] shrink-0 cursor-pointer select-none transition-all duration-200 hover:brightness-110 hover:shadow-lg active:scale-95"
+        className={`bg-[#ffa270] content-stretch flex flex-col items-center justify-center overflow-clip px-[20px] md:px-[28px] py-[12px] md:py-[28px] relative rounded-[8px] md:rounded-[12px] shrink-0 select-none transition-all duration-200 ${
+          disabled
+            ? "opacity-60 cursor-not-allowed"
+            : "cursor-pointer hover:brightness-110 hover:shadow-lg active:scale-95"
+        }`}
         data-name="Button"
-        onClick={onStartDiagnosis}
+        onClick={disabled ? undefined : onStartDiagnosis}
       >
         <p className="[word-break:break-word] font-['Albert_Sans:Bold',sans-serif] font-bold leading-none relative shrink-0 text-[14px] md:text-[18px] text-black whitespace-nowrap">Diagnose</p>
       </div>
@@ -58,9 +69,17 @@ function Frame11({ onStartDiagnosis }: { onStartDiagnosis?: () => void }) {
   );
 }
 
-function TextField({ onStartDiagnosis }: { onStartDiagnosis?: () => void }) {
-  const [value, setValue] = useState("");
-
+function TextField({
+  value,
+  onChange,
+  onStartDiagnosis,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onStartDiagnosis?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <div className="bg-white relative rounded-[12px] shrink-0 w-full transition-shadow duration-200 hover:shadow-md" data-name="Text Field">
       <div className="flex flex-col overflow-clip rounded-[inherit] w-full">
@@ -68,13 +87,17 @@ function TextField({ onStartDiagnosis }: { onStartDiagnosis?: () => void }) {
           <input
             type="text"
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !disabled) {
+                onStartDiagnosis?.();
+              }
+            }}
+            disabled={disabled}
             placeholder="What's the issue?"
-            className="flex-1 bg-transparent border-none outline-none font-['Albert_Sans:Light',sans-serif] font-light text-[16px] text-black placeholder:text-[rgba(0,0,0,0.5)] py-[14px] pr-[10px] cursor-text"
+            className="flex-1 bg-transparent border-none outline-none font-['Albert_Sans:Light',sans-serif] font-light text-[16px] text-black placeholder:text-[rgba(0,0,0,0.5)] py-[14px] pr-[10px] cursor-text disabled:opacity-60"
           />
-          <Frame11
-            onStartDiagnosis={onStartDiagnosis}
-          />
+          <Frame11 onStartDiagnosis={onStartDiagnosis} disabled={disabled} />
         </div>
       </div>
       <div aria-hidden="true" className="absolute border border-[#d2d2d2] border-solid inset-0 pointer-events-none rounded-[12px] transition-colors duration-200" />
@@ -101,10 +124,32 @@ function Info() {
   );
 }
 
-function InputField({ onStartDiagnosis }: { onStartDiagnosis?: () => void }) {
+function InputField({
+  value,
+  onChange,
+  onStartDiagnosis,
+  error,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onStartDiagnosis?: () => void;
+  error?: string | null;
+  disabled?: boolean;
+}) {
   return (
     <div className="content-stretch flex flex-col gap-[5px] items-start relative shrink-0 w-full md:w-[683px]" data-name="Input Field">
-      <TextField onStartDiagnosis={onStartDiagnosis} />
+      <TextField
+        value={value}
+        onChange={onChange}
+        onStartDiagnosis={onStartDiagnosis}
+        disabled={disabled}
+      />
+      {error && (
+        <p className="font-['Albert_Sans:Regular',sans-serif] font-normal text-[14px] text-[#ff6b35] leading-[1.4] px-[4px]">
+          {error}
+        </p>
+      )}
       <Info />
     </div>
   );
@@ -126,11 +171,29 @@ function Review() {
   );
 }
 
-function Frame({ onStartDiagnosis }: { onStartDiagnosis?: () => void }) {
+function Frame({
+  symptomInput,
+  onSymptomChange,
+  onStartDiagnosis,
+  diagnosisError,
+  isDiagnosing,
+}: {
+  symptomInput: string;
+  onSymptomChange: (value: string) => void;
+  onStartDiagnosis?: () => void;
+  diagnosisError?: string | null;
+  isDiagnosing?: boolean;
+}) {
   return (
     <div className="content-stretch flex flex-col gap-[60px] items-start py-[60px] relative shrink-0 w-full">
       <Heading />
-      <InputField onStartDiagnosis={onStartDiagnosis} />
+      <InputField
+        value={symptomInput}
+        onChange={onSymptomChange}
+        onStartDiagnosis={onStartDiagnosis}
+        error={diagnosisError}
+        disabled={isDiagnosing}
+      />
       <Review />
     </div>
   );
@@ -508,16 +571,51 @@ function Cta({ onStartDiagnosis }: { onStartDiagnosis?: () => void }) {
   );
 }
 
+async function parseDiagnosisError(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    return data?.error?.message ?? "Something went wrong. Please try again.";
+  } catch {
+    return "Something went wrong. Please try again.";
+  }
+}
+
 export default function LandingDesktopV2() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [symptomInput, setSymptomInput] = useState("");
+  const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
+  const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResponse | null>(null);
   const [diagnosisOpen, setDiagnosisOpen] = useState(false);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
 
-  const handleStartDiagnosis = () => {
+  const handleSymptomChange = (value: string) => {
+    setSymptomInput(value);
+    if (diagnosisError) {
+      setDiagnosisError(null);
+    }
+  };
+
+  const handleStartDiagnosis = async () => {
+    if (isDiagnosing) return;
+
+    setDiagnosisError(null);
     setIsDiagnosing(true);
-    setTimeout(() => {
-      setIsDiagnosing(false);
+
+    try {
+      const res = await fetch("/api/diagnosis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: symptomInput }),
+      });
+
+      if (!res.ok) {
+        setDiagnosisError(await parseDiagnosisError(res));
+        return;
+      }
+
+      const data = (await res.json()) as DiagnosisResponse;
+      setDiagnosisResult(data);
       setDiagnosisOpen(true);
       setTimeout(() => {
         const formElement = document.getElementById("diagnostic-form");
@@ -525,7 +623,11 @@ export default function LandingDesktopV2() {
           formElement.scrollIntoView({ behavior: "smooth", block: "start" });
         }
       }, 100);
-    }, 2500);
+    } catch {
+      setDiagnosisError("Unable to reach the server. Please try again.");
+    } finally {
+      setIsDiagnosing(false);
+    }
   };
 
   const handleApplyMechanic = () => router.push('/mechanics/apply');
@@ -596,7 +698,13 @@ export default function LandingDesktopV2() {
           </button>
         </div>
 
-        <Frame onStartDiagnosis={handleStartDiagnosis} />
+        <Frame
+          symptomInput={symptomInput}
+          onSymptomChange={handleSymptomChange}
+          onStartDiagnosis={handleStartDiagnosis}
+          diagnosisError={diagnosisError}
+          isDiagnosing={isDiagnosing}
+        />
 
         {isDiagnosing && (
           <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -606,8 +714,9 @@ export default function LandingDesktopV2() {
             </p>
           </div>
         )}
-        {diagnosisOpen && (
+        {diagnosisOpen && diagnosisResult && (
           <DiagnosticModal
+            diagnosis={diagnosisResult}
             onClose={() => setDiagnosisOpen(false)}
             onFindMechanic={() => {
               setDiagnosisOpen(false);

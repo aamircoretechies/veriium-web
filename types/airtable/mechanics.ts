@@ -29,6 +29,9 @@ export type MechanicFields = {
   phone?: string;
   email?: string;
   profile_photo?: AirtableAttachment[];
+  driver_license?: AirtableAttachment[];
+  ase_certification?: AirtableAttachment[];
+  insurance_document?: AirtableAttachment[];
   bio?: string;
   languages?: string;
   years_experience?: number;
