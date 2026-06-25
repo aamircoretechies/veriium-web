@@ -38,6 +38,10 @@ export type JobFields = {
   platform_fee?: number;
   on_hand?: boolean;
 
+  // Payment (§5.4)
+  cancellation_policy_accepted_at?: AirtableDateTime;
+  payment_setup_at?: AirtableDateTime;
+
   // Lifecycle timestamps
   matched_at?: AirtableDateTime;
   accepted_at?: AirtableDateTime;

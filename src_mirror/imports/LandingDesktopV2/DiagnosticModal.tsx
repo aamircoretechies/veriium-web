@@ -197,7 +197,14 @@ export default function DiagnosticModal({
       const data = (await res.json()) as BookingResponse;
       onFindMechanic?.();
       const jobUrl = new URL(data.signedUrl);
-      router.push(`${jobUrl.pathname}${jobUrl.search}`);
+      const accessToken = jobUrl.searchParams.get("token");
+      if (!accessToken) {
+        setError("Unable to continue to payment. Please try again.");
+        return;
+      }
+      router.push(
+        `/public/match?jobId=${encodeURIComponent(data.jobId)}&token=${encodeURIComponent(accessToken)}`,
+      );
     } catch {
       setError("Unable to complete your booking. Please try again.");
     } finally {

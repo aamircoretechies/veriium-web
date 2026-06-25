@@ -96,6 +96,7 @@ export type ServiceType = (typeof SERVICE_TYPES)[number];
 
 /** §10.2 — payment record kinds + idempotency key prefixes. */
 export const PAYMENT_TYPES = [
+  "setup",
   "final",
   "cancellation_fee",
   "diagnostic_fee",

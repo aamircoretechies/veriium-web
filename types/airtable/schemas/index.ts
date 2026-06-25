@@ -144,6 +144,8 @@ export const updateJobSchema = z
     mechanic_payout: z.number().nonnegative().optional(),
     platform_fee: z.number().nonnegative().optional(),
     on_hand: z.boolean().optional(),
+    cancellation_policy_accepted_at: z.string().datetime().optional(),
+    payment_setup_at: z.string().datetime().optional(),
     matched_at: z.string().datetime().optional(),
     accepted_at: z.string().datetime().optional(),
     en_route_at: z.string().datetime().optional(),
@@ -203,6 +205,8 @@ export const updatePaymentSchema = z
   .object({
     status: paymentStatusSchema.optional(),
     amount: z.number().nonnegative().optional(),
+    stripe_customer_id: z.string().min(1).optional(),
+    stripe_setup_intent_id: z.string().min(1).optional(),
     stripe_payment_intent_id: z.string().min(1).optional(),
     stripe_charge_id: z.string().min(1).optional(),
     captured_at: z.string().datetime().optional(),

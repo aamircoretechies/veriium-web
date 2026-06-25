@@ -8,8 +8,10 @@ import {
 } from "@/types/airtable/schemas";
 import { getJobById } from "./lookup";
 import {
+  assertPaymentTransition,
   assertTransition,
   isMatchingPhaseStatus,
+  isPaymentPhaseStatus,
 } from "./transitions";
 
 function applyStatusTimestamps(
@@ -47,12 +49,12 @@ export async function updateJobStatus(
   const withTimestamps = applyStatusTimestamps(patch, current.fields.status);
   const fields = updateJobSchema.parse(withTimestamps);
 
-  if (
-    fields.status &&
-    fields.status !== current.fields.status &&
-    isMatchingPhaseStatus(current.fields.status)
-  ) {
-    assertTransition(current.fields.status, fields.status);
+  if (fields.status && fields.status !== current.fields.status) {
+    if (isPaymentPhaseStatus(current.fields.status)) {
+      assertPaymentTransition(current.fields.status, fields.status);
+    } else if (isMatchingPhaseStatus(current.fields.status)) {
+      assertTransition(current.fields.status, fields.status);
+    }
   }
 
   const client = getAirtableClient();

@@ -1,5 +1,22 @@
 import type { JobStatus } from "@/types/airtable/enums";
 
+/** Phase 5 — payment-phase statuses before matching begins. */
+export const PAYMENT_PHASE_STATUSES = [
+  "draft",
+  "matched_awaiting_payment",
+] as const;
+
+export type PaymentPhaseStatus = (typeof PAYMENT_PHASE_STATUSES)[number];
+
+export const PAYMENT_TRANSITIONS: Partial<
+  Record<PaymentPhaseStatus, readonly JobStatus[]>
+> = {
+  draft: ["matched_awaiting_payment", "cancelled"],
+  matched_awaiting_payment: ["matched", "cancelled"],
+};
+
+const paymentPhaseStatusSet = new Set<JobStatus>(PAYMENT_PHASE_STATUSES);
+
 /** Appendix B — matching-phase statuses owned by Phase 4. */
 export const MATCHING_PHASE_STATUSES = [
   "matched",
@@ -42,6 +59,24 @@ export function isMatchingPhaseStatus(
   status: JobStatus,
 ): status is MatchingPhaseStatus {
   return matchingPhaseStatusSet.has(status);
+}
+
+export function isPaymentPhaseStatus(
+  status: JobStatus,
+): status is PaymentPhaseStatus {
+  return paymentPhaseStatusSet.has(status);
+}
+
+/** Throws when `to` is not an allowed payment-phase successor of `from`. */
+export function assertPaymentTransition(from: JobStatus, to: JobStatus): void {
+  if (!isPaymentPhaseStatus(from)) {
+    throw new InvalidJobTransitionError(from, to);
+  }
+
+  const allowed = PAYMENT_TRANSITIONS[from];
+  if (!allowed?.includes(to)) {
+    throw new InvalidJobTransitionError(from, to);
+  }
 }
 
 /** Throws when `to` is not an allowed matching-phase successor of `from`. */

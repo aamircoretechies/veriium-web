@@ -1,5 +1,5 @@
-import BookingConfirmation from "../../../src_mirror/imports/Booking/BookingConfirmation";
+import { redirect } from "next/navigation";
 
-export default function ConfirmationPage() {
-  return <BookingConfirmation />;
+export default function LegacyConfirmationPage() {
+  redirect("/public?error=invalid_link");
 }

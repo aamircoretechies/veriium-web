@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "matching:manual-test": "npx tsx scripts/matching-manual-test.ts"
+    "matching:manual-test": "npx tsx scripts/matching-manual-test.ts",
+    "payments:manual-test": "npx tsx scripts/payments-manual-test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -38,6 +39,8 @@
     "@radix-ui/react-toggle": "^1.1.12",
     "@radix-ui/react-toggle-group": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.10",
+    "@stripe/react-stripe-js": "^6.6.0",
+    "@stripe/stripe-js": "^9.8.0",
     "@tailwindcss/postcss": "^4.3.1",
     "@types/react-dom": "^19.2.3",
     "@upstash/qstash": "^2.11.1",
@@ -58,6 +61,7 @@
     "react-resizable-panels": "^2.0.19",
     "recharts": "^2.12.7",
     "sonner": "^2.0.7",
+    "stripe": "^22.3.0",
     "tailwind-merge": "^3.6.0",
     "vaul": "^1.1.2",
     "zod": "^4.4.3"
