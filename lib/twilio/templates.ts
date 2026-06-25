@@ -95,3 +95,58 @@ export function matchAcceptedDriver(): string {
 export function matchAlreadyAssigned(): string {
   return "Veriium: This job was already claimed by another mechanic. Thanks for responding!";
 }
+
+/** §7.2 — Driver update when mechanic begins diagnosing. */
+export function serviceDiagnosingDriver(): string {
+  return "Veriium: Your mechanic has started diagnosing your vehicle. You'll receive a quote shortly.";
+}
+
+type ServiceQuoteDetails = {
+  quoteAmount: number;
+  partsCost: number;
+  onHand: boolean;
+};
+
+/** §7.2 — Driver quote approval request. */
+export function serviceQuoteDriver(details: ServiceQuoteDetails): string {
+  const total = details.quoteAmount + details.partsCost;
+  const onHandNote = details.onHand
+    ? " Parts are on hand — repair can start right after approval."
+    : "";
+
+  return `Veriium: Your quote is ready — labor $${details.quoteAmount.toFixed(2)}, parts $${details.partsCost.toFixed(2)} (total $${total.toFixed(2)}).${onHandNote} Reply APPROVE to accept or DECLINE to cancel.`;
+}
+
+/** §7.2 — Driver parts ETA update. */
+export function servicePartsEta(minutes: number): string {
+  return `Veriium: Your mechanic expects parts to arrive in about ${minutes} minutes.`;
+}
+
+/** §9.3 — Driver confirmation / dispute prompt after DONE. */
+export function serviceDoneDriver(finalPrice: number): string {
+  return `Veriium: Your repair is complete. Final total: $${finalPrice.toFixed(2)}. Reply 2 to confirm and complete payment, or 1 to dispute.`;
+}
+
+/** §9.1 — Driver confirmation after cancellation. */
+export function cancellationDriver(feeCharged: boolean): string {
+  if (feeCharged) {
+    return "Veriium: Your job has been cancelled. A $50 cancellation fee has been charged per our policy.";
+  }
+
+  return "Veriium: Your job has been cancelled. No cancellation fee applies.";
+}
+
+/** §9.1 — Mechanic alert when the driver cancels. */
+export function cancellationMechanic(): string {
+  return "Veriium: The customer cancelled this job. You're back on the available list and can accept new jobs.";
+}
+
+/** §9.2 — Mechanic prompt when no-show window opens after ARRIVED. */
+export function noShowEligibleMechanic(): string {
+  return "Veriium: Customer not here? Reply NOSHOW to report a no-show.";
+}
+
+/** §9.3 — Driver reminder to confirm or dispute after DONE. */
+export function disputeReminderDriver(hours: 24 | 48 | 72): string {
+  return `Veriium: Reminder — your repair is awaiting confirmation (${hours}h). Reply 2 to confirm and complete payment, or 1 to dispute.`;
+}

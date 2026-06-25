@@ -1,8 +1,10 @@
 import { getAirtableClient } from "@/lib/airtable";
+import { findDriverByPhone } from "@/lib/drivers/lookup";
 import { findMechanicByPhone } from "@/lib/mechanics/lookup";
 import { normalizeUsPhone } from "@/lib/phone";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { JobFields } from "@/types/airtable/jobs";
+import { ACTIVE_SERVICE_STATUSES } from "./transitions";
 
 function escapeAirtableString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
@@ -69,4 +71,65 @@ export async function findPendingJobForMechanic(
   }
 
   return null;
+}
+
+function buildStatusOrFormula(statuses: readonly string[]): string {
+  if (statuses.length === 1) {
+    return `{status}='${escapeAirtableString(statuses[0])}'`;
+  }
+
+  return `OR(${statuses.map((status) => `{status}='${escapeAirtableString(status)}'`).join(", ")})`;
+}
+
+/**
+ * Find the mechanic's active in-service job (`accepted_by_mechanic` … `in_progress`).
+ */
+export async function findActiveJobForMechanic(
+  phone: string,
+): Promise<AirtableRecord<JobFields> | null> {
+  const phoneE164 = normalizeUsPhone(phone);
+  const mechanic = await findMechanicByPhone(phoneE164);
+  if (!mechanic) {
+    return null;
+  }
+
+  const client = getAirtableClient();
+  const mechanicId = escapeAirtableString(mechanic.id);
+  const statusFilter = buildStatusOrFormula(ACTIVE_SERVICE_STATUSES);
+
+  const response = await client.listRecords<JobFields>("jobs", {
+    filterByFormula: `AND(${statusFilter}, FIND('${mechanicId}', ARRAYJOIN({mechanic}, ',')))`,
+    maxRecords: 1,
+    sort: [{ field: "accepted_at", direction: "desc" }],
+  });
+
+  return response.records[0] ?? null;
+}
+
+/**
+ * Find a job awaiting a driver SMS reply (quote APPROVE/DECLINE or confirm/dispute).
+ */
+export async function findJobAwaitingDriverResponse(
+  phone: string,
+): Promise<AirtableRecord<JobFields> | null> {
+  const phoneE164 = normalizeUsPhone(phone);
+  const driver = await findDriverByPhone(phoneE164);
+  if (!driver) {
+    return null;
+  }
+
+  const client = getAirtableClient();
+  const driverId = escapeAirtableString(driver.id);
+  const statusFilter = buildStatusOrFormula([
+    "completed_pending_confirmation",
+    "quote_submitted",
+  ]);
+
+  const response = await client.listRecords<JobFields>("jobs", {
+    filterByFormula: `AND(${statusFilter}, FIND('${driverId}', ARRAYJOIN({driver}, ',')))`,
+    maxRecords: 1,
+    sort: [{ field: "quote_submitted_at", direction: "desc" }],
+  });
+
+  return response.records[0] ?? null;
 }

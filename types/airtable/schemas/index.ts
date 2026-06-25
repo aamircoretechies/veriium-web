@@ -77,6 +77,7 @@ export const updateMechanicSchema = z
   .object({
     status: mechanicStatusSchema.optional(),
     availability_status: availabilityStatusSchema.optional(),
+    availability_updated_at: z.string().datetime().optional(),
     setup_wizard_completed_at: z.string().datetime().optional(),
     approved_at: z.string().datetime().optional(),
     under_review_at: z.string().datetime().optional(),

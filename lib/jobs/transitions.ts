@@ -35,12 +35,69 @@ const matchingPhaseStatusSet = new Set<JobStatus>(MATCHING_PHASE_STATUSES);
  * Phase 5 owns `draft → matched_awaiting_payment → matched`; those are not listed here.
  */
 export const MATCHING_TRANSITIONS: Partial<
-  Record<MatchingPhaseStatus, readonly MatchingPhaseStatus[]>
+  Record<MatchingPhaseStatus, readonly JobStatus[]>
 > = {
-  matched: ["accepted_by_mechanic", "matched_tier2"],
-  matched_tier2: ["accepted_by_mechanic", "matched_tier3"],
-  matched_tier3: ["accepted_by_mechanic", "awaiting_admin_match"],
-  awaiting_admin_match: ["matched"],
+  matched: ["accepted_by_mechanic", "matched_tier2", "cancelled"],
+  matched_tier2: ["accepted_by_mechanic", "matched_tier3", "cancelled"],
+  matched_tier3: ["accepted_by_mechanic", "awaiting_admin_match", "cancelled"],
+  awaiting_admin_match: ["matched", "cancelled"],
+};
+
+/** Appendix B — service-phase statuses from mechanic accept through job completion. */
+export const SERVICE_PHASE_STATUSES = [
+  "accepted_by_mechanic",
+  "en_route",
+  "vehicle_received",
+  "arrived",
+  "diagnosing",
+  "quote_submitted",
+  "quote_approved",
+  "quote_declined",
+  "in_progress",
+  "completed_pending_confirmation",
+  "confirmed",
+  "disputed",
+  "refunded",
+  "no_show_pending_review",
+] as const;
+
+export type ServicePhaseStatus = (typeof SERVICE_PHASE_STATUSES)[number];
+
+const servicePhaseStatusSet = new Set<JobStatus>(SERVICE_PHASE_STATUSES);
+
+/** Statuses where a mechanic still has an active in-flight job (SMS routing). */
+export const ACTIVE_SERVICE_STATUSES = [
+  "accepted_by_mechanic",
+  "en_route",
+  "vehicle_received",
+  "arrived",
+  "diagnosing",
+  "quote_submitted",
+  "quote_approved",
+  "in_progress",
+] as const;
+
+export type ActiveServiceStatus = (typeof ACTIVE_SERVICE_STATUSES)[number];
+
+/**
+ * Allowed service-phase transitions (Appendix B).
+ * `accepted_by_mechanic` is the handoff from matching; outgoing moves are service-owned.
+ */
+export const SERVICE_TRANSITIONS: Partial<
+  Record<ServicePhaseStatus, readonly JobStatus[]>
+> = {
+  accepted_by_mechanic: ["en_route", "vehicle_received", "cancelled"],
+  en_route: ["arrived", "cancelled"],
+  vehicle_received: ["diagnosing", "cancelled"],
+  arrived: ["diagnosing", "no_show_pending_review"],
+  diagnosing: ["quote_submitted"],
+  quote_submitted: ["quote_approved", "quote_declined"],
+  quote_approved: ["in_progress"],
+  quote_declined: ["cancelled"],
+  in_progress: ["completed_pending_confirmation"],
+  completed_pending_confirmation: ["confirmed", "disputed"],
+  disputed: ["confirmed", "refunded"],
+  no_show_pending_review: ["cancelled"],
 };
 
 export class InvalidJobTransitionError extends Error {
@@ -67,6 +124,18 @@ export function isPaymentPhaseStatus(
   return paymentPhaseStatusSet.has(status);
 }
 
+export function isServicePhaseStatus(
+  status: JobStatus,
+): status is ServicePhaseStatus {
+  return servicePhaseStatusSet.has(status);
+}
+
+export function isActiveServiceStatus(
+  status: JobStatus,
+): status is ActiveServiceStatus {
+  return (ACTIVE_SERVICE_STATUSES as readonly JobStatus[]).includes(status);
+}
+
 /** Throws when `to` is not an allowed payment-phase successor of `from`. */
 export function assertPaymentTransition(from: JobStatus, to: JobStatus): void {
   if (!isPaymentPhaseStatus(from)) {
@@ -86,7 +155,19 @@ export function assertTransition(from: JobStatus, to: JobStatus): void {
   }
 
   const allowed = MATCHING_TRANSITIONS[from];
-  if (!allowed?.includes(to as MatchingPhaseStatus)) {
+  if (!allowed?.includes(to)) {
+    throw new InvalidJobTransitionError(from, to);
+  }
+}
+
+/** Throws when `to` is not an allowed service-phase successor of `from`. */
+export function assertServiceTransition(from: JobStatus, to: JobStatus): void {
+  if (!isServicePhaseStatus(from)) {
+    throw new InvalidJobTransitionError(from, to);
+  }
+
+  const allowed = SERVICE_TRANSITIONS[from];
+  if (!allowed?.includes(to)) {
     throw new InvalidJobTransitionError(from, to);
   }
 }

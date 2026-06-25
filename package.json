@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "matching:manual-test": "npx tsx scripts/matching-manual-test.ts",
-    "payments:manual-test": "npx tsx scripts/payments-manual-test.ts"
+    "payments:manual-test": "npx tsx scripts/payments-manual-test.ts",
+    "phase6:manual-test": "npx tsx scripts/phase6-manual-test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

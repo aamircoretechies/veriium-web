@@ -14,5 +14,6 @@ Migration notes:
 |--------|---------|---------|
 | Matching (Phase 4) | `npm run matching:manual-test` | Tier escalation + SMS response matrix |
 | Payments (Phase 5) | `npm run payments:manual-test` | SetupIntent, PI helpers, idempotency (in-memory by default) |
+| Edge cases (Phase 6) | `npm run phase6:manual-test` | Service SMS, cancel/no-show/dispute/stale (in-memory by default) |
 
 For Stripe browser + webhook testing, see the **Stripe CLI end-to-end** section in `scripts/payments-manual-test.ts` (requires `stripe listen --forward-to localhost:3000/api/webhooks/stripe` and test keys in `.env.local`).

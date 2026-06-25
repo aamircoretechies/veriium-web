@@ -16,6 +16,8 @@ export type MechanicFields = {
   // §11.3 — account state & workflow
   status: MechanicStatus;
   availability_status?: AvailabilityStatus;
+  /** Last time the mechanic refreshed availability (§4.8 stale check). */
+  availability_updated_at?: AirtableDateTime;
   setup_wizard_completed_at?: AirtableDateTime;
   approved_at?: AirtableDateTime;
   under_review_at?: AirtableDateTime;

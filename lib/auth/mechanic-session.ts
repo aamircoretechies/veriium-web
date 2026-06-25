@@ -37,6 +37,31 @@ export async function signMechanicSession(
     .sign(getSessionSecret());
 }
 
+/** Extract a Bearer token from the `Authorization` header, if present. */
+export function getBearerToken(request: Request): string | null {
+  const header = request.headers.get("Authorization");
+  if (!header?.startsWith("Bearer ")) {
+    return null;
+  }
+
+  const token = header.slice("Bearer ".length).trim();
+  return token || null;
+}
+
+/** Require a valid mechanic session from the request `Authorization` header. */
+export async function requireMechanicSession(
+  request: Request,
+): Promise<MechanicSessionPayload> {
+  const token = getBearerToken(request);
+  if (!token) {
+    throw new InvalidMechanicSessionError(
+      "Missing or invalid Authorization header.",
+    );
+  }
+
+  return verifyMechanicSession(token);
+}
+
 /** Verify a mechanic session JWT. Throws `InvalidMechanicSessionError` on failure. */
 export async function verifyMechanicSession(
   token: string,

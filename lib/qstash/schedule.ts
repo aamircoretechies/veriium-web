@@ -21,7 +21,10 @@ function buildAbsoluteUrl(path: string, appUrl: string): string {
 export async function scheduleJob<TBody = unknown>(
   options: ScheduleJobOptions<TBody>,
 ): Promise<PublishResponse<PublishRequest>> {
-  if (process.env.MATCHING_MANUAL_TEST === "1") {
+  if (
+    process.env.MATCHING_MANUAL_TEST === "1" ||
+    process.env.PHASE6_MANUAL_TEST === "1"
+  ) {
     return {
       messageId: `mock-qstash-${Date.now()}`,
     } as PublishResponse<PublishRequest>;

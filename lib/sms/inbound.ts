@@ -1,4 +1,11 @@
-import { findPendingJobForMechanic } from "@/lib/jobs/lookup";
+import { InvalidDriverConfirmError } from "@/lib/disputes/confirm";
+import { InvalidDriverDisputeError } from "@/lib/disputes/dispute";
+import {
+  findActiveJobForMechanic,
+  findJobAwaitingDriverResponse,
+  findPendingJobForMechanic,
+} from "@/lib/jobs/lookup";
+import { InvalidDriverQuoteResponseError } from "@/lib/service/quote-response";
 import {
   InvalidMatchResponseError,
   MechanicNotAssignedError,
@@ -9,11 +16,21 @@ import {
 } from "@/lib/matching/respond";
 import { findMechanicByPhone } from "@/lib/mechanics/lookup";
 import { normalizeUsPhone } from "@/lib/phone";
-import { sendSms } from "@/lib/twilio/sms";
+import {
+  handleServiceCommand,
+  isServiceParsedCommand,
+} from "@/lib/service/handle-command";
+import {
+  InvalidServiceCommandError,
+  NoShowNotEligibleError,
+  QuoteParseError,
+  WrongServiceTypeError,
+} from "@/lib/service/errors";
+import {
+  handleDriverInbound,
+  isDriverResponseCommand,
+} from "./driver-inbound";
 import { parseSmsCommand, type ParsedSmsCommand } from "./parse-command";
-
-const COMMAND_NOT_AVAILABLE_YET =
-  "Veriium: That command is not available yet. We'll text you when it's time for the next step.";
 
 export type InboundSmsFields = {
   From: string;
@@ -28,11 +45,15 @@ export type HandleInboundSmsResult = {
   action:
     | "ignored"
     | "match_handled"
-    | "post_match_deferred"
+    | "service_handled"
+    | "driver_handled"
     | "unknown"
     | "no_mechanic"
-    | "no_pending_job";
+    | "no_pending_job"
+    | "no_active_job";
   matchAction?: string;
+  serviceAction?: string;
+  driverAction?: string;
 };
 
 function isMatchCommand(
@@ -41,19 +62,8 @@ function isMatchCommand(
   return parsed.kind === "match";
 }
 
-async function notifyCommandNotAvailable(phoneE164: string): Promise<void> {
-  try {
-    await sendSms(phoneE164, COMMAND_NOT_AVAILABLE_YET);
-  } catch (error) {
-    console.error(
-      `[sms/inbound] Failed to send deferred-command reply to ${phoneE164}:`,
-      error,
-    );
-  }
-}
-
 /**
- * Dispatch an inbound mechanic SMS: matching handlers in Phase 4; later commands log + optional reply.
+ * Dispatch inbound SMS: driver responses, service handlers, then matching.
  */
 export async function handleInboundSms(
   fields: InboundSmsFields,
@@ -72,26 +82,93 @@ export async function handleInboundSms(
     return { ...base, action: "unknown" };
   }
 
-  if (
-    parsed.kind === "post_match" ||
-    parsed.kind === "quote" ||
-    parsed.kind === "parts" ||
-    parsed.kind === "done"
-  ) {
-    console.log(
-      `[sms/inbound] Deferred command from ${fields.From} (${fields.MessageSid}):`,
-      parsed,
-    );
-    const phoneE164 = normalizeUsPhone(fields.From);
-    await notifyCommandNotAvailable(phoneE164);
-    return { ...base, action: "post_match_deferred" };
+  const phoneE164 = normalizeUsPhone(fields.From);
+
+  const driverJob = await findJobAwaitingDriverResponse(phoneE164);
+  if (driverJob && isDriverResponseCommand(parsed, driverJob)) {
+    try {
+      const result = await handleDriverInbound(driverJob, parsed);
+      console.log(
+        `[sms/inbound] Driver response for job ${driverJob.id}:`,
+        result.action,
+        `(${fields.MessageSid})`,
+      );
+      return {
+        ...base,
+        action: "driver_handled",
+        driverAction: result.action,
+      };
+    } catch (error) {
+      if (
+        error instanceof InvalidDriverQuoteResponseError ||
+        error instanceof InvalidDriverConfirmError ||
+        error instanceof InvalidDriverDisputeError
+      ) {
+        console.warn(
+          `[sms/inbound] Ignored driver response for job ${driverJob.id}:`,
+          error.message,
+        );
+        return { ...base, action: "ignored" };
+      }
+      throw error;
+    }
+  }
+
+  if (isServiceParsedCommand(parsed)) {
+    const mechanic = await findMechanicByPhone(phoneE164);
+    if (!mechanic) {
+      console.warn(
+        `[sms/inbound] Service command from unknown mechanic phone ${phoneE164} (${fields.MessageSid})`,
+      );
+      return { ...base, action: "no_mechanic" };
+    }
+
+    const job = await findActiveJobForMechanic(phoneE164);
+    if (!job) {
+      console.log(
+        `[sms/inbound] No active service job for mechanic ${mechanic.id} (${fields.MessageSid})`,
+      );
+      return { ...base, action: "no_active_job" };
+    }
+
+    try {
+      const result = await handleServiceCommand(
+        job.id,
+        mechanic.id,
+        parsed,
+      );
+      console.log(
+        `[sms/inbound] Service command for job ${job.id}:`,
+        result.action,
+        `(${fields.MessageSid})`,
+      );
+      return {
+        ...base,
+        action: "service_handled",
+        serviceAction: result.action,
+      };
+    } catch (error) {
+      if (
+        error instanceof InvalidServiceCommandError ||
+        error instanceof WrongServiceTypeError ||
+        error instanceof QuoteParseError ||
+        error instanceof NoShowNotEligibleError ||
+        error instanceof MechanicNotAssignedError
+      ) {
+        console.warn(
+          `[sms/inbound] Ignored service command for job ${job.id}:`,
+          error.message,
+        );
+        return { ...base, action: "ignored" };
+      }
+      throw error;
+    }
   }
 
   if (!isMatchCommand(parsed)) {
     return { ...base, action: "unknown" };
   }
 
-  const phoneE164 = normalizeUsPhone(fields.From);
   const mechanic = await findMechanicByPhone(phoneE164);
   if (!mechanic) {
     console.warn(

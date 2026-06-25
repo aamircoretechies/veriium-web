@@ -1,4 +1,5 @@
 import { getAirtableClient } from "@/lib/airtable";
+import { scheduleStaleAvailabilityCheck } from "@/lib/mechanics/stale-schedule";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { MechanicFields } from "@/types/airtable/mechanics";
 import { updateMechanicSchema } from "@/types/airtable/schemas";
@@ -14,6 +15,29 @@ export async function markMechanicAssigned(
   return client.updateRecord<MechanicFields>("mechanics", mechanicId, fields, {
     typecast: true,
   });
+}
+
+/** Return mechanic to the available pool after a terminal job outcome (§4.8). */
+export async function markMechanicAvailable(
+  mechanicId: string,
+): Promise<AirtableRecord<MechanicFields>> {
+  const now = new Date().toISOString();
+  const fields = updateMechanicSchema.parse({
+    availability_status: "available",
+    availability_updated_at: now,
+  });
+  const client = getAirtableClient();
+
+  const record = await client.updateRecord<MechanicFields>(
+    "mechanics",
+    mechanicId,
+    fields,
+    { typecast: true },
+  );
+
+  await scheduleStaleAvailabilityCheck(mechanicId);
+
+  return record;
 }
 
 /** Mark mechanic busy after ACCEPT / YES (§8.1). */
