@@ -25,7 +25,7 @@ function serviceTypeClause(serviceType?: ServiceType): string {
   return "";
 }
 
-function zipClause(zipCode: string): string {
+export function zipClause(zipCode: string): string {
   const zip = escapeAirtableString(zipCode);
   return `FIND('${zip}', ARRAYJOIN({service_zip_codes}, ','))`;
 }

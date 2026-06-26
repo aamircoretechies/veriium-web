@@ -1,161 +1,19 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Footer from "../../../app/components/Footer";
 import PublicHeader from "@/app/components/PublicHeader";
+import type {
+  MechanicListing,
+  MechanicSearchMinRating,
+  MechanicSearchResponse,
+  MechanicSearchServiceTypeFilter,
+  MechanicSearchSort,
+  MechanicServiceKey,
+} from "@/types/api/mechanic-search";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type ServiceType =
-  | "engine"
-  | "brakes"
-  | "suspension"
-  | "electrical"
-  | "diagnostics"
-  | "general"
-  | "other";
-
-interface Mechanic {
-  id: string;
-  name: string;
-  avatar: string;
-  rating: number;
-  reviewCount: number;
-  yearsExperience: number;
-  aseCertified: boolean;
-  services: ServiceType[];
-  zipCode: string;
-  city: string;
-  state: string;
-  distance: number; // miles
-  mobileAvailable: boolean;
-  shopAvailable: boolean;
-  availableToday: boolean;
-  bio: string;
-  languages: string[];
-}
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_MECHANICS: Mechanic[] = [
-  {
-    id: "m1",
-    name: "Carlos Rivera",
-    avatar: "CR",
-    rating: 4.9,
-    reviewCount: 127,
-    yearsExperience: 12,
-    aseCertified: true,
-    services: ["engine", "diagnostics", "electrical"],
-    zipCode: "90210",
-    city: "Beverly Hills",
-    state: "CA",
-    distance: 2.3,
-    mobileAvailable: true,
-    shopAvailable: false,
-    availableToday: true,
-    bio: "ASE-certified with 12 years specializing in engine diagnostics and electrical systems. I come to you.",
-    languages: ["English", "Spanish"],
-  },
-  {
-    id: "m2",
-    name: "Priya Nair",
-    avatar: "PN",
-    rating: 4.8,
-    reviewCount: 89,
-    yearsExperience: 8,
-    aseCertified: true,
-    services: ["brakes", "suspension", "general"],
-    zipCode: "90211",
-    city: "Los Angeles",
-    state: "CA",
-    distance: 4.1,
-    mobileAvailable: false,
-    shopAvailable: true,
-    availableToday: true,
-    bio: "Brake and suspension expert. Clear pricing, no surprises. Shop-based service in LA.",
-    languages: ["English", "Hindi"],
-  },
-  {
-    id: "m3",
-    name: "James O'Brien",
-    avatar: "JO",
-    rating: 4.7,
-    reviewCount: 214,
-    yearsExperience: 18,
-    aseCertified: false,
-    services: ["general", "engine", "brakes"],
-    zipCode: "90024",
-    city: "Westwood",
-    state: "CA",
-    distance: 6.8,
-    mobileAvailable: true,
-    shopAvailable: true,
-    availableToday: false,
-    bio: "18 years of hands-on experience. Honest advice, fair prices. Mobile and shop service available.",
-    languages: ["English"],
-  },
-  {
-    id: "m4",
-    name: "Sofia Mendez",
-    avatar: "SM",
-    rating: 5.0,
-    reviewCount: 43,
-    yearsExperience: 5,
-    aseCertified: true,
-    services: ["electrical", "diagnostics"],
-    zipCode: "90035",
-    city: "Culver City",
-    state: "CA",
-    distance: 8.2,
-    mobileAvailable: true,
-    shopAvailable: false,
-    availableToday: true,
-    bio: "Specialist in modern vehicle electrical systems and OBD diagnostics. Fast turnaround.",
-    languages: ["English", "Spanish"],
-  },
-  {
-    id: "m5",
-    name: "Derek Washington",
-    avatar: "DW",
-    rating: 4.6,
-    reviewCount: 176,
-    yearsExperience: 14,
-    aseCertified: true,
-    services: ["engine", "suspension", "general", "brakes"],
-    zipCode: "90045",
-    city: "Inglewood",
-    state: "CA",
-    distance: 10.5,
-    mobileAvailable: false,
-    shopAvailable: true,
-    availableToday: false,
-    bio: "Full-service shop with 14 years of experience. Specializing in domestic and import vehicles.",
-    languages: ["English"],
-  },
-  {
-    id: "m6",
-    name: "Mei Lin",
-    avatar: "ML",
-    rating: 4.9,
-    reviewCount: 62,
-    yearsExperience: 9,
-    aseCertified: true,
-    services: ["diagnostics", "electrical", "engine"],
-    zipCode: "90028",
-    city: "Hollywood",
-    state: "CA",
-    distance: 3.7,
-    mobileAvailable: true,
-    shopAvailable: false,
-    availableToday: true,
-    bio: "Certified diagnostic specialist focused on hybrid and EV systems. Transparent and thorough.",
-    languages: ["English", "Mandarin"],
-  },
-];
-
-const SERVICE_LABELS: Record<ServiceType, string> = {
+const SERVICE_LABELS: Record<MechanicServiceKey, string> = {
   engine: "Engine",
   brakes: "Brakes",
   suspension: "Suspension",
@@ -165,7 +23,7 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   other: "Other",
 };
 
-const ALL_SERVICES: ServiceType[] = [
+const ALL_SERVICES: MechanicServiceKey[] = [
   "engine",
   "brakes",
   "suspension",
@@ -174,6 +32,54 @@ const ALL_SERVICES: ServiceType[] = [
   "general",
 ];
 
+interface Filters {
+  zip: string;
+  minRating: MechanicSearchMinRating;
+  aseCertifiedOnly: boolean;
+  services: MechanicServiceKey[];
+  availableTodayOnly: boolean;
+  maxDistance: number;
+  serviceType: MechanicSearchServiceTypeFilter;
+}
+
+const DEFAULT_FILTERS: Filters = {
+  zip: "",
+  minRating: 0,
+  aseCertifiedOnly: false,
+  services: [],
+  availableTodayOnly: false,
+  maxDistance: 50,
+  serviceType: "all",
+};
+
+function buildSearchParams(filters: Filters, sort: MechanicSearchSort): string {
+  const params = new URLSearchParams();
+
+  if (filters.zip) {
+    params.set("zip", filters.zip);
+  }
+  if (filters.minRating > 0) {
+    params.set("minRating", String(filters.minRating));
+  }
+  if (filters.aseCertifiedOnly) {
+    params.set("aseCertifiedOnly", "true");
+  }
+  if (filters.services.length > 0) {
+    params.set("services", filters.services.join(","));
+  }
+  if (filters.availableTodayOnly) {
+    params.set("availableTodayOnly", "true");
+  }
+  if (filters.maxDistance < 50) {
+    params.set("maxDistance", String(filters.maxDistance));
+  }
+  if (filters.serviceType !== "all") {
+    params.set("serviceType", filters.serviceType);
+  }
+  params.set("sort", sort);
+
+  return params.toString();
+}
 
 // ─── Star Rating ──────────────────────────────────────────────────────────────
 
@@ -222,7 +128,7 @@ function Badge({ label, variant = "default" }: { label: string; variant?: "defau
 
 // ─── Mechanic Card ────────────────────────────────────────────────────────────
 
-function MechanicCard({ mechanic, onBook }: { mechanic: Mechanic; onBook: (id: string) => void }) {
+function MechanicCard({ mechanic, onBook }: { mechanic: MechanicListing; onBook: (id: string) => void }) {
   return (
     <article className="bg-white rounded-[16px] border border-[#ececec] p-5 flex flex-col gap-4 shadow-sm hover:shadow-md hover:-translate-y-[2px] transition-all duration-200">
       {/* Header row */}
@@ -285,26 +191,6 @@ function MechanicCard({ mechanic, onBook }: { mechanic: Mechanic; onBook: (id: s
 
 // ─── Filter Panel ─────────────────────────────────────────────────────────────
 
-interface Filters {
-  zip: string;
-  minRating: number;
-  aseCertifiedOnly: boolean;
-  services: ServiceType[];
-  availableTodayOnly: boolean;
-  maxDistance: number;
-  serviceType: "all" | "mobile" | "shop";
-}
-
-const DEFAULT_FILTERS: Filters = {
-  zip: "",
-  minRating: 0,
-  aseCertifiedOnly: false,
-  services: [],
-  availableTodayOnly: false,
-  maxDistance: 50,
-  serviceType: "all",
-};
-
 function FilterPanel({
   filters,
   onChange,
@@ -314,7 +200,7 @@ function FilterPanel({
   onChange: (f: Partial<Filters>) => void;
   onReset: () => void;
 }) {
-  const toggleService = (s: ServiceType) => {
+  const toggleService = (s: MechanicServiceKey) => {
     const next = filters.services.includes(s)
       ? filters.services.filter((x) => x !== s)
       : [...filters.services, s];
@@ -346,7 +232,7 @@ function FilterPanel({
           maxLength={5}
           value={filters.zip}
           onChange={(e) => onChange({ zip: e.target.value.replace(/\D/g, "") })}
-          placeholder="e.g. 90210"
+          placeholder="e.g. 30043"
           className="border border-[#e0e0e0] rounded-[10px] px-3 py-[9px] text-[14px] font-['Albert_Sans:Regular',sans-serif] outline-none focus:border-[#ffa270] transition-colors duration-200 w-full"
         />
       </div>
@@ -360,7 +246,7 @@ function FilterPanel({
           {[0, 3, 4, 4.5].map((r) => (
             <button
               key={r}
-              onClick={() => onChange({ minRating: r })}
+              onClick={() => onChange({ minRating: r as MechanicSearchMinRating })}
               className={`text-[12px] font-['Albert_Sans:SemiBold',sans-serif] px-3 py-[6px] rounded-full border transition-colors duration-200 cursor-pointer select-none ${
                 filters.minRating === r
                   ? "bg-[#ffa270] border-[#ffa270] text-black"
@@ -477,9 +363,7 @@ function FilterPanel({
 
 // ─── Sort Controls ────────────────────────────────────────────────────────────
 
-type SortOption = "distance" | "rating" | "reviews" | "experience";
-
-const SORT_LABELS: Record<SortOption, string> = {
+const SORT_LABELS: Record<MechanicSearchSort, string> = {
   distance: "Nearest",
   rating: "Top Rated",
   reviews: "Most Reviewed",
@@ -491,8 +375,8 @@ function SortBar({
   onSort,
   resultCount,
 }: {
-  sort: SortOption;
-  onSort: (s: SortOption) => void;
+  sort: MechanicSearchSort;
+  onSort: (s: MechanicSearchSort) => void;
   resultCount: number;
 }) {
   return (
@@ -503,7 +387,7 @@ function SortBar({
       </p>
       <div className="flex items-center gap-2 flex-wrap">
         <span className="font-['Albert_Sans:SemiBold',sans-serif] text-[13px] text-[#888]">Sort by:</span>
-        {(Object.keys(SORT_LABELS) as SortOption[]).map((s) => (
+        {(Object.keys(SORT_LABELS) as MechanicSearchSort[]).map((s) => (
           <button
             key={s}
             onClick={() => onSort(s)}
@@ -565,7 +449,40 @@ function MobileFilterDrawer({
 }
 
 
-// ─── Empty State ──────────────────────────────────────────────────────────────
+// ─── Loading / Error / Empty States ───────────────────────────────────────────
+
+function LoadingState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-[60px] gap-4" aria-live="polite" aria-busy="true">
+      <div
+        className="w-[40px] h-[40px] rounded-full border-[3px] border-[#ececec] border-t-[#ffa270] animate-spin"
+        aria-hidden="true"
+      />
+      <p className="font-['Albert_Sans:Regular',sans-serif] text-[14px] text-[#666]">
+        Searching for mechanics…
+      </p>
+    </div>
+  );
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-[60px] gap-4 text-center">
+      <p className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black">
+        Could not load mechanics
+      </p>
+      <p className="font-['Albert_Sans:Regular',sans-serif] text-[14px] text-[#666] max-w-[320px]">
+        {message}
+      </p>
+      <button
+        onClick={onRetry}
+        className="mt-2 bg-[#ffa270] hover:bg-[#ff8f52] text-black font-['Albert_Sans:Bold',sans-serif] font-bold text-[14px] px-5 py-[10px] rounded-[10px] cursor-pointer select-none transition-colors"
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
 
 function EmptyState({ onReset }: { onReset: () => void }) {
   return (
@@ -595,9 +512,14 @@ function EmptyState({ onReset }: { onReset: () => void }) {
 export default function FindMechanic() {
   const router = useRouter();
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [sort, setSort] = useState<SortOption>("distance");
+  const [sort, setSort] = useState<MechanicSearchSort>("distance");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [searchZip, setSearchZip] = useState("");
+  const [mechanics, setMechanics] = useState<MechanicListing[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchKey, setFetchKey] = useState(0);
 
   const updateFilter = (partial: Partial<Filters>) => {
     setFilters((prev) => ({ ...prev, ...partial }));
@@ -608,50 +530,74 @@ export default function FindMechanic() {
     setSearchZip("");
   };
 
-  // Apply filters
-  const filtered = useMemo(() => {
-    let list = [...MOCK_MECHANICS];
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
 
-    if (filters.zip) {
-      list = list.filter((m) => m.zipCode.startsWith(filters.zip));
-    }
-    if (filters.minRating > 0) {
-      list = list.filter((m) => m.rating >= filters.minRating);
-    }
-    if (filters.aseCertifiedOnly) {
-      list = list.filter((m) => m.aseCertified);
-    }
-    if (filters.availableTodayOnly) {
-      list = list.filter((m) => m.availableToday);
-    }
-    if (filters.maxDistance < 50) {
-      list = list.filter((m) => m.distance <= filters.maxDistance);
-    }
-    if (filters.services.length > 0) {
-      list = list.filter((m) =>
-        filters.services.every((s) => m.services.includes(s))
-      );
-    }
-    if (filters.serviceType === "mobile") {
-      list = list.filter((m) => m.mobileAvailable);
-    } else if (filters.serviceType === "shop") {
-      list = list.filter((m) => m.shopAvailable);
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const query = buildSearchParams(filters, sort);
+        const res = await fetch(`/api/mechanics/search?${query}`, {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as {
+            error?: { message?: string };
+          } | null;
+          throw new Error(
+            body?.error?.message ?? `Search failed (${res.status})`,
+          );
+        }
+
+        const data = (await res.json()) as MechanicSearchResponse;
+        if (cancelled) {
+          return;
+        }
+
+        setMechanics(data.mechanics);
+        setTotal(data.total);
+      } catch (err) {
+        if (cancelled || (err instanceof DOMException && err.name === "AbortError")) {
+          return;
+        }
+
+        setMechanics([]);
+        setTotal(0);
+        setError(
+          err instanceof Error ? err.message : "Something went wrong. Please try again.",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [filters, sort, fetchKey]);
+
+  const handleBook = (mechanicId: string) => {
+    const zip = filters.zip || searchZip;
+    const params = new URLSearchParams({ mechanicId });
+    if (zip) {
+      params.set("zip", zip);
     }
 
-    // Sort
-    list.sort((a, b) => {
-      if (sort === "distance") return a.distance - b.distance;
-      if (sort === "rating") return b.rating - a.rating;
-      if (sort === "reviews") return b.reviewCount - a.reviewCount;
-      if (sort === "experience") return b.yearsExperience - a.yearsExperience;
-      return 0;
-    });
+    try {
+      sessionStorage.setItem("veriium:selectedMechanicId", mechanicId);
+    } catch {
+      // sessionStorage may be unavailable in private browsing
+    }
 
-    return list;
-  }, [filters, sort]);
-
-  const handleBook = (_id: string) => {
-    router.push("/public");
+    router.push(`/public?${params.toString()}`);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -737,12 +683,16 @@ export default function FindMechanic() {
 
           {/* Results */}
           <div className="flex-1 min-w-0 flex flex-col gap-5">
-            <SortBar sort={sort} onSort={setSort} resultCount={filtered.length} />
-            {filtered.length === 0 ? (
+            <SortBar sort={sort} onSort={setSort} resultCount={total} />
+            {error ? (
+              <ErrorState message={error} onRetry={() => setFetchKey((k) => k + 1)} />
+            ) : loading ? (
+              <LoadingState />
+            ) : mechanics.length === 0 ? (
               <EmptyState onReset={resetFilters} />
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {filtered.map((m) => (
+                {mechanics.map((m) => (
                   <MechanicCard key={m.id} mechanic={m} onBook={handleBook} />
                 ))}
               </div>

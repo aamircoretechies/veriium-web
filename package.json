@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "matching:manual-test": "npx tsx scripts/matching-manual-test.ts",
+    "mechanic-search:manual-test": "npx tsx scripts/mechanic-search-manual-test.ts",
     "payments:manual-test": "npx tsx scripts/payments-manual-test.ts",
     "phase6:manual-test": "npx tsx scripts/phase6-manual-test.ts"
   },
