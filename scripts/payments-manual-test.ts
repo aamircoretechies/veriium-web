@@ -207,7 +207,7 @@ function createInMemoryStripeMock(): {
       object: "payment_method",
       type: "card",
       customer: customerId,
-    } as Stripe.PaymentMethod;
+    } as unknown as Stripe.PaymentMethod;
     state.paymentMethods.set(pmId, pm);
 
     const customer = state.customers.get(customerId);
@@ -235,7 +235,7 @@ function createInMemoryStripeMock(): {
       ...existing,
       status: "succeeded",
       payment_method: pmId,
-    } as Stripe.SetupIntent;
+    } as unknown as Stripe.SetupIntent;
     state.setupIntents.set(setupIntentId, updated);
     return updated;
   }
@@ -251,7 +251,7 @@ function createInMemoryStripeMock(): {
           name: params.name ?? null,
           metadata: params.metadata ?? {},
           invoice_settings: {},
-        } as Stripe.Customer;
+        } as unknown as Stripe.Customer;
         state.customers.set(id, customer);
         return customer;
       },
@@ -273,7 +273,7 @@ function createInMemoryStripeMock(): {
             ...customer.invoice_settings,
             ...params.invoice_settings,
           },
-        } as Stripe.Customer;
+        } as unknown as Stripe.Customer;
         state.customers.set(id, updated);
         return updated;
       },
@@ -291,7 +291,7 @@ function createInMemoryStripeMock(): {
           customer: customerId,
           usage: params.usage ?? "off_session",
           metadata: params.metadata ?? {},
-        } as Stripe.SetupIntent;
+        } as unknown as Stripe.SetupIntent;
         state.setupIntents.set(id, setupIntent);
         return setupIntent;
       },
@@ -330,7 +330,7 @@ function createInMemoryStripeMock(): {
           capture_method: params.capture_method ?? "automatic",
           metadata: params.metadata ?? {},
           latest_charge: status === "succeeded" ? nextMockId(state, "ch") : undefined,
-        } as Stripe.PaymentIntent;
+        } as unknown as Stripe.PaymentIntent;
 
         state.paymentIntents.set(id, paymentIntent);
         if (idempotencyKey) {
@@ -352,7 +352,7 @@ function createInMemoryStripeMock(): {
         const data = [...state.paymentMethods.values()].filter(
           (pm) => pm.customer === customerId,
         );
-        return { object: "list", data, has_more: false, url: "" } as Stripe.ApiList<Stripe.PaymentMethod>;
+        return { object: "list", data, has_more: false, url: "" } as unknown as Stripe.ApiList<Stripe.PaymentMethod>;
       },
     },
     prices: {
@@ -373,7 +373,7 @@ function createInMemoryStripeMock(): {
           object: "price",
           unit_amount: params.unit_amount,
           currency: params.currency ?? "usd",
-        } as Stripe.Price;
+        } as unknown as Stripe.Price;
         state.prices.set(id, price);
         if (idempotencyKey) {
           state.idempotency.set(idempotencyKey, price);
@@ -400,7 +400,7 @@ function createInMemoryStripeMock(): {
           url: `https://pay.stripe.test/${id}`,
           metadata: params.metadata ?? {},
           active: true,
-        } as Stripe.PaymentLink;
+        } as unknown as Stripe.PaymentLink;
         state.paymentLinks.push(link);
         if (idempotencyKey) {
           state.idempotency.set(idempotencyKey, link);
@@ -687,7 +687,7 @@ async function main(): Promise<void> {
       object: "event",
       type: "setup_intent.succeeded",
       data: { object: setupIntent },
-    } as Stripe.Event);
+    } as unknown as Stripe.Event);
 
     const job = await getJobById(jobId);
     assert(job.fields.status === "matched", "matched via webhook");
@@ -703,14 +703,14 @@ async function main(): Promise<void> {
       metadata: { jobId },
       status: "requires_payment_method",
       last_setup_error: { message: "Your card was declined." },
-    } as Stripe.SetupIntent;
+    } as unknown as Stripe.SetupIntent;
 
     await dispatchStripeWebhook({
       id: `evt_${RUN_ID}_setup_fail`,
       object: "event",
       type: "setup_intent.setup_failed",
       data: { object: failedIntent },
-    } as Stripe.Event);
+    } as unknown as Stripe.Event);
 
     const payment = await findPaymentByIdempotencyKey(setupKey(jobId));
     assert(payment?.fields.status === "failed", "payment failed");
@@ -819,7 +819,7 @@ async function main(): Promise<void> {
       object: "event",
       type: "payment_intent.succeeded",
       data: { object: paymentIntent },
-    } as Stripe.Event);
+    } as unknown as Stripe.Event);
 
     const job = await getJobById(jobId);
     assert(job.fields.mechanic_payout === 25, "mechanic_payout");
