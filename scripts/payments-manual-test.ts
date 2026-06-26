@@ -282,7 +282,7 @@ function createInMemoryStripeMock(): {
       create: async (params: Stripe.SetupIntentCreateParams) => {
         const id = nextMockId(state, "seti");
         const customerId =
-          typeof params.customer === "string" ? params.customer : params.customer?.id;
+          typeof params.customer === "string" ? params.customer : undefined;
         const setupIntent = {
           id,
           object: "setup_intent",
