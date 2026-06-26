@@ -642,7 +642,7 @@ async function main(): Promise<void> {
           customer: (await getDriverById(setupDriverId)).fields.stripe_customer_id,
           payment_method: "pm_live_placeholder",
           status: "succeeded",
-        } as Stripe.SetupIntent);
+        } as unknown as Stripe.SetupIntent);
 
     if (!stripeMock) {
       throw new Error(
