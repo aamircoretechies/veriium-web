@@ -654,24 +654,40 @@ export default function LandingDesktopV2() {
             <div className="w-[78%] bg-white flex flex-col justify-between py-[36px] px-[28px] overflow-y-auto">
               <div className="flex flex-col gap-[36px]">
                 <nav className="flex flex-col gap-[28px]">
-                  {["About Us", "Certifications", "Mechanic", "Contact Us"].map((item) => (
-                    <button
-                      key={item}
-                      onClick={() => {
-                        setMenuOpen(false);
-                        if (item === "Mechanic") router.push('/mechanics/apply');
-                        else if (item === "Contact Us") router.push('/public/contact');
-                      }}
-                      className="text-left font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 select-none"
-                    >
-                      {item}
-                    </button>
-                  ))}
+                  <button
+                    onClick={() => { setMenuOpen(false); router.push('/public/find-mechanic'); }}
+                    className="text-left font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 select-none"
+                  >
+                    Find a Mechanic
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); router.push('/public/about'); }}
+                    className="text-left font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 select-none"
+                  >
+                    About Us
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); router.push('/public/contact'); }}
+                    className="text-left font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 select-none"
+                  >
+                    Contact Us
+                  </button>
                 </nav>
               </div>
-              <p className="font-['Albert_Sans:Regular',sans-serif] font-normal text-[14px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 mt-[40px]">
-                Terms &amp; Privacy Policy
-              </p>
+              <div className="flex flex-col gap-3 mt-[40px]">
+                <button
+                  onClick={() => { setMenuOpen(false); router.push('/public/find-mechanic'); }}
+                  className="w-full font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-[16px] text-black py-[14px] rounded-[12px] border border-[#e0e0e0] hover:border-[#ffa270] hover:text-[#ffa270] transition-colors duration-200 select-none cursor-pointer"
+                >
+                  Find a Mechanic
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); router.push('/mechanics/apply'); }}
+                  className="w-full font-['Albert_Sans:Bold',sans-serif] font-bold text-[16px] text-black bg-[#ffa270] py-[14px] rounded-[12px] hover:bg-[#ff8f52] transition-colors duration-200 select-none cursor-pointer"
+                >
+                  Apply for Mechanic
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -686,7 +702,22 @@ export default function LandingDesktopV2() {
       <div className="relative z-10 w-full max-w-[1440px] px-[24px] md:px-[100px] flex flex-col gap-[68px] items-center pt-[40px] pb-[100px] mx-auto">
         <div className="flex h-[100px] items-center justify-between w-full" data-name="Top Nav">
           <Frame14 />
-          <div className="hidden md:flex" />
+          {/* Desktop nav buttons */}
+          <nav className="hidden md:flex items-center gap-3">
+            <button
+              onClick={() => router.push('/public/find-mechanic')}
+              className="font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-[15px] text-white px-5 py-[10px] rounded-[10px] border border-white/40 hover:border-white hover:bg-white/10 transition-colors duration-200 select-none cursor-pointer whitespace-nowrap"
+            >
+              Find a Mechanic
+            </button>
+            <button
+              onClick={() => router.push('/mechanics/apply')}
+              className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black bg-[#ffa270] px-5 py-[10px] rounded-[10px] hover:bg-[#ff8f52] transition-colors duration-200 select-none cursor-pointer whitespace-nowrap"
+            >
+              Apply for Mechanic
+            </button>
+          </nav>
+          {/* Mobile hamburger */}
           <button
             className="flex md:hidden flex-col gap-[5px] cursor-pointer p-[8px] select-none"
             onClick={() => setMenuOpen(true)}

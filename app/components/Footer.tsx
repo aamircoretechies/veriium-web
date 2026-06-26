@@ -33,7 +33,7 @@ export default function Footer({ onLinkClick }: { onLinkClick?: (name: string) =
 
   return (
     <div className="bg-black w-full" data-name="Footer">
-      <div className="max-w-[1440px] mx-auto overflow-clip pb-[30px] md:pb-[10px] px-6 md:pl-[80px] md:pr-[90px] pt-[60px] rounded-[24px]">
+      <div className="max-w-[1440px] mx-auto overflow-clip pb-[30px] md:pb-[10px] px-6 pt-[60px] rounded-[24px]">
         <div className="flex flex-col md:flex-row justify-between gap-10 md:gap-[400px] items-start w-full mb-[40px] md:mb-[97px]">
           <div className="flex flex-col gap-[10px] items-start">
             <div className="pb-[10px] w-full">

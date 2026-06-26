@@ -12,6 +12,37 @@ import { Switch } from '@/app/components/ui/switch';
 import Footer from '../../../app/components/Footer';
 import PublicHeader from '@/app/components/PublicHeader';
 
+// Gwinnett County, GA — eligible pilot ZIP codes (PO Box-only ZIPs excluded)
+const GWINNETT_ZIPS = [
+  { zip: "30011", city: "Auburn" },
+  { zip: "30017", city: "Grayson" },
+  { zip: "30019", city: "Dacula" },
+  { zip: "30024", city: "Suwanee" },
+  { zip: "30039", city: "Snellville" },
+  { zip: "30043", city: "Lawrenceville" },
+  { zip: "30044", city: "Lawrenceville" },
+  { zip: "30045", city: "Lawrenceville" },
+  { zip: "30046", city: "Lawrenceville" },
+  { zip: "30047", city: "Lilburn" },
+  { zip: "30052", city: "Loganville" },
+  { zip: "30058", city: "Lithonia (Gwinnett)" },
+  { zip: "30071", city: "Norcross" },
+  { zip: "30078", city: "Snellville" },
+  { zip: "30084", city: "Tucker (Gwinnett)" },
+  { zip: "30087", city: "Stone Mountain (Gwinnett)" },
+  { zip: "30092", city: "Peachtree Corners" },
+  { zip: "30093", city: "Norcross" },
+  { zip: "30096", city: "Duluth" },
+  { zip: "30097", city: "Duluth" },
+  { zip: "30340", city: "Doraville (Gwinnett)" },
+  { zip: "30360", city: "Dunwoody (Gwinnett)" },
+  { zip: "30517", city: "Braselton (Gwinnett)" },
+  { zip: "30518", city: "Buford" },
+  { zip: "30519", city: "Buford" },
+  { zip: "30548", city: "Hoschton" },
+  { zip: "30620", city: "Bethlehem" },
+] as const;
+
 async function parseApiError(res: Response): Promise<string> {
   try {
     const data = await res.json();
@@ -51,9 +82,7 @@ export default function ApplyAsMechanic() {
     },
     mobileAvailable: false,
     shopAvailable: false,
-    primaryZip: '',
-    additionalZips: '',
-    serviceRadius: '',
+    selectedZips: [] as string[],
     shopAddress: '',
     toolsConfirmed: false,
     transportConfirmed: false,
@@ -94,6 +123,10 @@ export default function ApplyAsMechanic() {
       setSubmitError("Please upload your driver license or government ID.");
       return;
     }
+    if (formData.selectedZips.length === 0) {
+      setSubmitError("Please select at least one service area ZIP code.");
+      return;
+    }
 
     setSubmitError("");
     setLoading(true);
@@ -118,9 +151,6 @@ export default function ApplyAsMechanic() {
       const yearsExperience = formData.yearsExp
         ? parseInt(formData.yearsExp, 10)
         : undefined;
-      const serviceRadius = formData.serviceRadius
-        ? parseInt(formData.serviceRadius, 10)
-        : undefined;
 
       const payload = {
         fullName: formData.fullName,
@@ -134,9 +164,8 @@ export default function ApplyAsMechanic() {
         services: formData.services,
         mobileAvailable: formData.mobileAvailable,
         shopAvailable: formData.shopAvailable,
-        primaryZip: formData.primaryZip,
-        additionalZips: formData.additionalZips || undefined,
-        serviceRadius: Number.isNaN(serviceRadius) ? undefined : serviceRadius,
+        primaryZip: formData.selectedZips[0] ?? '',
+        additionalZips: formData.selectedZips.slice(1),
         shopAddress: formData.shopAddress || undefined,
         toolsConfirmed: formData.toolsConfirmed,
         transportConfirmed: formData.transportConfirmed,
@@ -212,9 +241,18 @@ export default function ApplyAsMechanic() {
           <h1 className="text-4xl md:text-5xl font-['Fustat:Bold',sans-serif] font-bold text-black mb-4">Apply as a Mechanic</h1>
           <p className="text-lg text-gray-600 font-['Albert_Sans:Regular',sans-serif]">Join our trusted network of mechanics and grow your business with Veriium.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm font-['Albert_Sans:Medium',sans-serif] text-gray-500">
-            <span className="flex items-center gap-2">âœ“ Verified Trust</span>
-            <span className="flex items-center gap-2">âœ“ Flexible Hours</span>
-            <span className="flex items-center gap-2">âœ“ Upfront Pricing</span>
+            <span className="flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffa270" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+              Verified Trust
+            </span>
+            <span className="flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffa270" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Flexible Hours
+            </span>
+            <span className="flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffa270" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Upfront Pricing
+            </span>
           </div>
         </div>
 
@@ -319,22 +357,91 @@ export default function ApplyAsMechanic() {
               <CardTitle className="font-['Albert_Sans:Bold',sans-serif] text-xl">Service Area & Tools</CardTitle>
             </CardHeader>
             <CardContent className="pt-6 grid gap-6">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="primaryZip" className="font-['Albert_Sans:Medium',sans-serif]">Primary ZIP Code *</Label>
-                  <Input id="primaryZip" required value={formData.primaryZip} onChange={e => handleInputChange('primaryZip', e.target.value)} placeholder="12345" />
+              {/* Gwinnett County ZIP multi-select */}
+              <div className="flex flex-col gap-3">
+                <div>
+                  <Label className="font-['Albert_Sans:SemiBold',sans-serif] text-sm text-black">
+                    Service Area ZIP Codes *
+                  </Label>
+                  <p className="text-sm text-gray-500 font-['Albert_Sans:Regular',sans-serif] mt-1">
+                    Select all ZIP codes within Gwinnett County, GA where you are available to work. At least one is required.
+                  </p>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="serviceRadius" className="font-['Albert_Sans:Medium',sans-serif]">Service Radius (miles)</Label>
-                  <Input id="serviceRadius" type="number" value={formData.serviceRadius} onChange={e => handleInputChange('serviceRadius', e.target.value)} placeholder="e.g. 20" />
+
+                {/* County label */}
+                <div className="flex items-center gap-2 mt-1">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffa270" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <span className="text-xs font-['Albert_Sans:SemiBold',sans-serif] text-[#ffa270] uppercase tracking-wide">Gwinnett County, Georgia — Pilot Service Area</span>
+                </div>
+
+                {/* Select All / Clear All */}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('selectedZips', GWINNETT_ZIPS.map(z => z.zip))}
+                    className="text-xs font-['Albert_Sans:SemiBold',sans-serif] text-[#ffa270] hover:underline cursor-pointer select-none"
+                  >
+                    Select All ({GWINNETT_ZIPS.length})
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('selectedZips', [])}
+                    className="text-xs font-['Albert_Sans:SemiBold',sans-serif] text-gray-400 hover:underline cursor-pointer select-none"
+                  >
+                    Clear All
+                  </button>
+                  {formData.selectedZips.length > 0 && (
+                    <>
+                      <span className="text-gray-300">|</span>
+                      <span className="text-xs font-['Albert_Sans:SemiBold',sans-serif] text-black">
+                        {formData.selectedZips.length} selected
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* ZIP grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border border-gray-200 rounded-xl p-4 bg-gray-50/50 max-h-[380px] overflow-y-auto">
+                  {GWINNETT_ZIPS.map(({ zip, city }) => {
+                    const checked = formData.selectedZips.includes(zip);
+                    return (
+                      <label
+                        key={zip}
+                        className={`flex items-center gap-3 px-3 py-[10px] rounded-[10px] cursor-pointer transition-colors duration-150 select-none ${
+                          checked ? 'bg-[#fff3ee] border border-[#ffa270]' : 'bg-white border border-gray-200 hover:border-[#ffa270]'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(c) => {
+                            const next = c
+                              ? [...formData.selectedZips, zip]
+                              : formData.selectedZips.filter(z => z !== zip);
+                            handleInputChange('selectedZips', next);
+                          }}
+                          id={`zip-${zip}`}
+                          aria-label={`ZIP code ${zip} — ${city}`}
+                        />
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-['Albert_Sans:Bold',sans-serif] text-sm text-black">{zip}</span>
+                          <span className="font-['Albert_Sans:Regular',sans-serif] text-xs text-gray-500 truncate">{city}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
+
+              {/* Shop address (conditional) */}
               {formData.shopAvailable && (
                 <div className="grid gap-2">
                   <Label htmlFor="shopAddress" className="font-['Albert_Sans:Medium',sans-serif]">Shop Address</Label>
                   <Textarea id="shopAddress" value={formData.shopAddress} onChange={e => handleInputChange('shopAddress', e.target.value)} placeholder="Full address of your shop" />
                 </div>
               )}
+
+              {/* Tool / transport confirmations */}
               <div className="space-y-4 mt-2">
                 <div className="flex items-start space-x-3">
                   <Checkbox id="toolsConfirmed" checked={formData.toolsConfirmed} onCheckedChange={c => handleInputChange('toolsConfirmed', c)} className="mt-1" />
