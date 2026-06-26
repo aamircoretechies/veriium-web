@@ -35,6 +35,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type Stripe from "stripe";
 
+import type { MechanicFields } from "@/types/airtable/mechanics";
+
 const RUN_ID = Date.now().toString(36);
 const TEST_ZIP = "30043";
 const TEST_CATEGORY = "brakes" as const;
@@ -163,6 +165,12 @@ function nextMockId(state: MockStripeState, prefix: string): string {
   return `${prefix}_${RUN_ID}_${state.nextId}`;
 }
 
+function resolveStripeCustomerId(
+  customer: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined,
+): string | undefined {
+  return typeof customer === "string" ? customer : customer?.id;
+}
+
 function createInMemoryStripeMock(): {
   client: Stripe;
   state: MockStripeState;
@@ -203,10 +211,7 @@ function createInMemoryStripeMock(): {
     if (!existing) {
       throw new Error(`SetupIntent ${setupIntentId} not found in mock`);
     }
-    const customerId =
-      typeof existing.customer === "string"
-        ? existing.customer
-        : existing.customer?.id;
+    const customerId = resolveStripeCustomerId(existing.customer);
     const pmId = customerId ? attachPaymentMethod(customerId) : undefined;
     const updated = {
       ...existing,
@@ -258,10 +263,7 @@ function createInMemoryStripeMock(): {
     setupIntents: {
       create: async (params: Stripe.SetupIntentCreateParams) => {
         const id = nextMockId(state, "seti");
-        const customerId =
-          typeof params.customer === "string"
-            ? params.customer
-            : params.customer?.id;
+        const customerId = resolveStripeCustomerId(params.customer);
         const setupIntent = {
           id,
           object: "setup_intent",
@@ -947,7 +949,7 @@ async function main(): Promise<void> {
       const result = await runStaleAvailabilityCheck(mechanicId);
       assert(result.action === "marked_stale", "marked_stale");
 
-      const mechanic = await client.getRecord("mechanics", mechanicId);
+      const mechanic = await client.getRecord<MechanicFields>("mechanics", mechanicId);
       assert(
         mechanic.fields.availability_status === "stale",
         "availability_status stale",
