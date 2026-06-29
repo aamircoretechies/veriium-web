@@ -4,6 +4,7 @@ export const DISPUTE_REMIND_PATH = "/api/jobs/dispute/remind";
 export const STALE_AVAILABILITY_PATH = "/api/mechanics/availability/stale";
 export const RECEIPT_CHECK_PATH = "/api/jobs/receipt/check";
 export const QUOTE_TIMEOUT_CHECK_PATH = "/api/jobs/quote/timeout";
+export const REQUOTE_TIMEOUT_CHECK_PATH = "/api/jobs/requote/timeout";
 
 const DEFAULT_NO_SHOW_DELAY_SECONDS = 900;
 const DEFAULT_DISPUTE_REMINDER_DELAYS_SECONDS = [86400, 172800, 259200] as const;
@@ -11,6 +12,7 @@ const DEFAULT_STALE_AVAILABILITY_SECONDS = 604800;
 const DEFAULT_CANCELLATION_FREE_HOURS = 24;
 const DEFAULT_RECEIPT_DEADLINE_SECONDS = 86400;
 const DEFAULT_QUOTE_TIMEOUT_SECONDS = 7200;
+const DEFAULT_REQUOTE_TIMEOUT_SECONDS = 7200;
 
 export type DisputeReminderHours = 24 | 48 | 72;
 
@@ -152,6 +154,28 @@ export function getQuoteTimeoutDelaySeconds(): number {
       raw,
     );
     return DEFAULT_QUOTE_TIMEOUT_SECONDS;
+  }
+
+  return value;
+}
+
+/**
+ * Seconds after driver requote SMS before auto-decline (Exhibit A §5.5).
+ * Override: `REQUOTE_TIMEOUT_SECONDS`.
+ */
+export function getRequoteTimeoutDelaySeconds(): number {
+  const raw = process.env.REQUOTE_TIMEOUT_SECONDS?.trim();
+  if (!raw) {
+    return DEFAULT_REQUOTE_TIMEOUT_SECONDS;
+  }
+
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value < 0) {
+    console.warn(
+      "[edge] Invalid REQUOTE_TIMEOUT_SECONDS; using default:",
+      raw,
+    );
+    return DEFAULT_REQUOTE_TIMEOUT_SECONDS;
   }
 
   return value;

@@ -123,12 +123,13 @@ export async function findJobAwaitingDriverResponse(
   const statusFilter = buildStatusOrFormula([
     "completed_pending_confirmation",
     "quote_submitted",
+    "requote_submitted",
   ]);
 
   const response = await client.listRecords<JobFields>("jobs", {
     filterByFormula: `AND(${statusFilter}, FIND('${driverId}', ARRAYJOIN({driver}, ',')))`,
     maxRecords: 1,
-    sort: [{ field: "quote_submitted_at", direction: "desc" }],
+    sort: [{ field: "requote_submitted_at", direction: "desc" }],
   });
 
   return response.records[0] ?? null;

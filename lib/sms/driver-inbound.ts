@@ -4,6 +4,10 @@ import {
   approveQuote,
   declineQuote,
 } from "@/lib/service/quote-response";
+import {
+  approveRequote,
+  declineRequote,
+} from "@/lib/service/requote-response";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { JobFields } from "@/types/airtable/jobs";
 import type { ParsedSmsCommand } from "./parse-command";
@@ -19,7 +23,10 @@ export function isDriverResponseCommand(
   job: AirtableRecord<JobFields>,
 ): boolean {
   if (parsed.kind === "driver_quote") {
-    return job.fields.status === "quote_submitted";
+    return (
+      job.fields.status === "quote_submitted" ||
+      job.fields.status === "requote_submitted"
+    );
   }
 
   if (parsed.kind === "driver_confirm") {
@@ -27,20 +34,30 @@ export function isDriverResponseCommand(
   }
 
   if (parsed.kind === "match" && parsed.command === "DECLINE") {
-    return job.fields.status === "quote_submitted";
+    return (
+      job.fields.status === "quote_submitted" ||
+      job.fields.status === "requote_submitted"
+    );
   }
 
   return false;
 }
 
 /**
- * Handle driver SMS replies: quote APPROVE/DECLINE and confirm/dispute digits (§7.2, §9.3).
+ * Handle driver SMS replies: quote/requote APPROVE/DECLINE and confirm/dispute digits (§7.2, §9.3).
  */
 export async function handleDriverInbound(
   job: AirtableRecord<JobFields>,
   parsed: ParsedSmsCommand,
 ): Promise<DriverInboundResult> {
   if (parsed.kind === "driver_quote") {
+    if (job.fields.status === "requote_submitted") {
+      if (parsed.command === "APPROVE") {
+        return approveRequote(job.id);
+      }
+      return declineRequote(job.id);
+    }
+
     if (parsed.command === "APPROVE") {
       return approveQuote(job.id);
     }
@@ -55,6 +72,9 @@ export async function handleDriverInbound(
   }
 
   if (parsed.kind === "match" && parsed.command === "DECLINE") {
+    if (job.fields.status === "requote_submitted") {
+      return declineRequote(job.id);
+    }
     return declineQuote(job.id);
   }
 

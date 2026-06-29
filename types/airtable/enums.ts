@@ -45,6 +45,7 @@ export const JOB_STATUSES = [
   "quote_submitted",
   "quote_approved",
   "quote_declined",
+  "requote_submitted",
   "in_progress",
   "completed_pending_confirmation",
   "confirmed",
@@ -102,6 +103,7 @@ export const PAYMENT_TYPES = [
   "cancellation_fee",
   "diagnostic_fee",
   "tip",
+  "installed_parts",
 ] as const;
 
 export type PaymentType = (typeof PAYMENT_TYPES)[number];

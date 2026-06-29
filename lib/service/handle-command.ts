@@ -8,6 +8,7 @@ import { handleReceived } from "./commands/received";
 import { handleStarted } from "./commands/started";
 import { handleDone } from "./done";
 import { handleQuote } from "./quote";
+import { handleRequote } from "./requote";
 import type { ServiceCommandResult } from "./guards";
 
 export type { ServiceCommandResult };
@@ -20,6 +21,7 @@ function isServiceParsedCommand(
   return (
     parsed.kind === "post_match" ||
     parsed.kind === "quote" ||
+    parsed.kind === "requote" ||
     parsed.kind === "parts" ||
     parsed.kind === "done" ||
     parsed.kind === "noshow"
@@ -55,6 +57,8 @@ export async function handleServiceCommand(
       break;
     case "quote":
       return handleQuote(jobId, mechanicId, parsed.remainder);
+    case "requote":
+      return handleRequote(jobId, mechanicId, parsed.remainder);
     case "parts":
       return handleParts(jobId, mechanicId, parsed.remainder);
     case "done":

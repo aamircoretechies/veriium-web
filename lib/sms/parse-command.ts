@@ -23,6 +23,7 @@ export type ParsedSmsCommand =
   | { kind: "driver_quote"; command: DriverQuoteSmsCommand }
   | { kind: "driver_confirm"; command: DriverConfirmSmsCommand }
   | { kind: "quote"; remainder: string }
+  | { kind: "requote"; remainder: string }
   | { kind: "parts"; remainder: string }
   | { kind: "done"; remainder: string }
   | { kind: "noshow" }
@@ -86,6 +87,11 @@ export function parseSmsCommand(body: string): ParsedSmsCommand {
   const quoteMatch = trimmed.match(/^quote\s+(.+)$/i);
   if (quoteMatch) {
     return { kind: "quote", remainder: quoteMatch[1].trim() };
+  }
+
+  const requoteMatch = trimmed.match(/^requote\s+(.+)$/i);
+  if (requoteMatch) {
+    return { kind: "requote", remainder: requoteMatch[1].trim() };
   }
 
   const partsMatch = trimmed.match(/^parts\s+(.+)$/i);

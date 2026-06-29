@@ -54,6 +54,7 @@ export const SERVICE_PHASE_STATUSES = [
   "quote_submitted",
   "quote_approved",
   "quote_declined",
+  "requote_submitted",
   "in_progress",
   "completed_pending_confirmation",
   "confirmed",
@@ -76,6 +77,7 @@ export const ACTIVE_SERVICE_STATUSES = [
   "quote_pending_admin",
   "quote_submitted",
   "quote_approved",
+  "requote_submitted",
   "in_progress",
 ] as const;
 
@@ -95,9 +97,10 @@ export const SERVICE_TRANSITIONS: Partial<
   diagnosing: ["quote_submitted", "quote_pending_admin"],
   quote_pending_admin: ["quote_submitted"],
   quote_submitted: ["quote_approved", "quote_declined"],
-  quote_approved: ["in_progress"],
+  quote_approved: ["in_progress", "requote_submitted"],
   quote_declined: ["cancelled"],
-  in_progress: ["completed_pending_confirmation"],
+  requote_submitted: ["in_progress", "quote_approved", "cancelled"],
+  in_progress: ["completed_pending_confirmation", "requote_submitted"],
   completed_pending_confirmation: ["confirmed", "disputed"],
   disputed: ["confirmed", "refunded"],
   no_show_pending_review: ["cancelled"],

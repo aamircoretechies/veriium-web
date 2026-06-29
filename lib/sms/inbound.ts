@@ -6,6 +6,7 @@ import {
   findPendingJobForMechanic,
 } from "@/lib/jobs/lookup";
 import { InvalidDriverQuoteResponseError } from "@/lib/service/quote-response";
+import { InvalidDriverRequoteResponseError } from "@/lib/service/requote-response";
 import {
   InvalidMatchResponseError,
   MechanicNotAssignedError,
@@ -155,6 +156,7 @@ export async function handleInboundSms(
     } catch (error) {
       if (
         error instanceof InvalidDriverQuoteResponseError ||
+        error instanceof InvalidDriverRequoteResponseError ||
         error instanceof InvalidDriverConfirmError ||
         error instanceof InvalidDriverDisputeError
       ) {

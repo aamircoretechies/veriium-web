@@ -32,3 +32,9 @@ export const quoteTimeoutPayloadSchema = z.object({
 });
 
 export type QuoteTimeoutPayload = z.infer<typeof quoteTimeoutPayloadSchema>;
+
+export const requoteTimeoutPayloadSchema = z.object({
+  jobId: z.string().min(1),
+});
+
+export type RequoteTimeoutPayload = z.infer<typeof requoteTimeoutPayloadSchema>;

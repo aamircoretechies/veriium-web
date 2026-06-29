@@ -22,3 +22,8 @@ export function cancelKey(jobId: string): string {
 export function tipKey(jobId: string): string {
   return `tip-${jobId}`;
 }
+
+/** Installed parts charge on requote decline — §5.5. */
+export function installedPartsKey(jobId: string): string {
+  return `installed-${jobId}`;
+}

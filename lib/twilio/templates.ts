@@ -122,14 +122,73 @@ export function serviceQuoteDeclinedDriver(): string {
   return "Veriium: You declined the repair quote (or did not respond within 2 hours). A $35 diagnostic fee has been charged to your card on file.";
 }
 
+type ServiceRequoteDetails = {
+  quoteAmount: number;
+  previousPartsCost: number;
+  newPartsCost: number;
+  reason?: string;
+};
+
+/** Exhibit A §3.2 — Driver requote approval request. */
+export function serviceRequoteDriver(details: ServiceRequoteDetails): string {
+  const total = details.quoteAmount + details.newPartsCost;
+  const reasonNote = details.reason ? ` Reason: ${details.reason}.` : "";
+
+  return `Veriium: Your mechanic submitted a revised parts quote — was $${details.previousPartsCost.toFixed(2)}, now $${details.newPartsCost.toFixed(2)} (new total $${total.toFixed(2)}).${reasonNote} Reply APPROVE to accept or DECLINE to stop work.`;
+}
+
+type ServiceRequoteDeclinedDetails = {
+  installedPartsCharge: number;
+  diagnosticCharged: boolean;
+};
+
+/** Exhibit A §5.5 — driver notification after requote decline or 2h timeout. */
+export function serviceRequoteDeclinedDriver(
+  details: ServiceRequoteDeclinedDetails,
+): string {
+  const partsNote =
+    details.installedPartsCharge > 0
+      ? ` Installed parts: $${details.installedPartsCharge.toFixed(2)}.`
+      : "";
+  const diagnosticNote = details.diagnosticCharged
+    ? " A $35 diagnostic fee has also been charged."
+    : "";
+
+  return `Veriium: You declined the revised parts quote (or did not respond within 2 hours).${partsNote}${diagnosticNote} The job has been cancelled.`;
+}
+
 /** §7.2 — Driver parts ETA update. */
 export function servicePartsEta(minutes: number): string {
   return `Veriium: Your mechanic expects parts to arrive in about ${minutes} minutes.`;
 }
 
+type ServiceDoneDetails = {
+  finalPrice: number;
+  partsVariance?: number;
+};
+
 /** §9.3 — Driver confirmation / dispute prompt after DONE. */
-export function serviceDoneDriver(finalPrice: number): string {
-  return `Veriium: Your repair is complete. Final total: $${finalPrice.toFixed(2)}. Reply 2 to confirm and complete payment, or 1 to dispute.`;
+export function serviceDoneDriver(
+  finalPriceOrDetails: number | ServiceDoneDetails,
+): string {
+  const details =
+    typeof finalPriceOrDetails === "number"
+      ? { finalPrice: finalPriceOrDetails }
+      : finalPriceOrDetails;
+  const { finalPrice, partsVariance } = details;
+
+  let message = `Veriium: Your repair is complete. Final total: $${finalPrice.toFixed(2)}.`;
+
+  if (
+    partsVariance !== undefined &&
+    partsVariance !== 0 &&
+    Math.abs(partsVariance) > 0.005
+  ) {
+    const direction = partsVariance > 0 ? "higher" : "lower";
+    message += ` Parts receipt was $${Math.abs(partsVariance).toFixed(2)} ${direction} than quoted (within allowed tolerance).`;
+  }
+
+  return `${message} Reply 2 to confirm and complete payment, or 1 to dispute.`;
 }
 
 /** §9.1 — Driver confirmation after cancellation. */

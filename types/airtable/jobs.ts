@@ -42,10 +42,17 @@ export type JobFields = {
   // Quote hardening (Exhibit A §3.4 — quote_timeout_qstash_id INFERRED)
   quote_timeout_qstash_id?: string;
 
+  // Requote (Exhibit A §3.2, §5.5 — field names INFERRED)
+  original_parts_cost?: number;
+  requote_reason?: string;
+  requote_timeout_qstash_id?: string;
+  parts_variance?: number;
+
   // Parts receipt (Exhibit A §5.3)
   receipt_url?: string;
   receipt_status?: ReceiptStatus;
   receipt_submitted_at?: AirtableDateTime;
+  receipt_total?: number;
   parts_reimbursement_forfeited?: boolean;
 
   // Payment (§5.4)
@@ -63,6 +70,9 @@ export type JobFields = {
   quote_submitted_at?: AirtableDateTime;
   quote_approved_at?: AirtableDateTime;
   quote_declined_at?: AirtableDateTime;
+  requote_submitted_at?: AirtableDateTime;
+  requote_approved_at?: AirtableDateTime;
+  requote_declined_at?: AirtableDateTime;
   in_progress_at?: AirtableDateTime;
   completed_at?: AirtableDateTime;
   confirmed_at?: AirtableDateTime;

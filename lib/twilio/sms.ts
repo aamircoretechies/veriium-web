@@ -18,7 +18,8 @@ export async function sendSms(
 ): Promise<SendSmsResult> {
   if (
     process.env.MATCHING_MANUAL_TEST === "1" ||
-    process.env.QUOTE_MANUAL_TEST === "1"
+    process.env.QUOTE_MANUAL_TEST === "1" ||
+    process.env.REQUOTE_MANUAL_TEST === "1"
   ) {
     const result = {
       sid: `SMmock${Date.now()}`,

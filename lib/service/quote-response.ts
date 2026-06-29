@@ -57,7 +57,15 @@ export async function approveQuote(
 
   await cancelQuoteTimeout(jobId);
 
-  await updateJobStatus(jobId, { status: "quote_approved" });
+  const originalPartsCost =
+    job.fields.original_parts_cost ?? job.fields.parts_cost;
+
+  await updateJobStatus(jobId, {
+    status: "quote_approved",
+    ...(originalPartsCost !== undefined
+      ? { original_parts_cost: originalPartsCost }
+      : {}),
+  });
 
   if (job.fields.on_hand) {
     const updated = await updateJobStatus(jobId, { status: "in_progress" });

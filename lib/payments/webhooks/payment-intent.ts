@@ -19,6 +19,7 @@ import {
   cancelKey,
   diagnosticKey,
   finalKey,
+  installedPartsKey,
   tipKey,
 } from "@/lib/stripe/idempotency";
 import type { ActionItemFields } from "@/types/airtable/action-items";
@@ -31,6 +32,7 @@ const PAYMENT_TYPE_VALUES = new Set<string>([
   "final",
   "cancellation_fee",
   "diagnostic_fee",
+  "installed_parts",
   "tip",
 ]);
 
@@ -99,6 +101,8 @@ function idempotencyKeyForType(jobId: string, paymentType: string): string | nul
       return diagnosticKey(jobId);
     case "cancellation_fee":
       return cancelKey(jobId);
+    case "installed_parts":
+      return installedPartsKey(jobId);
     case "tip":
       return tipKey(jobId);
     default:
