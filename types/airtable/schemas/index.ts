@@ -12,6 +12,7 @@ import {
   MECHANIC_STATUSES,
   PAYMENT_STATUSES,
   PAYMENT_TYPES,
+  RECEIPT_STATUSES,
   SERVICE_TYPES,
 } from "../enums";
 
@@ -27,6 +28,7 @@ export const paymentTypeSchema = z.enum(PAYMENT_TYPES);
 export const paymentStatusSchema = z.enum(PAYMENT_STATUSES);
 export const actionItemTypeSchema = z.enum(ACTION_ITEM_TYPES);
 export const actionItemStatusSchema = z.enum(ACTION_ITEM_STATUSES);
+export const receiptStatusSchema = z.enum(RECEIPT_STATUSES);
 
 export const airtableLinkedRecordsSchema = z.array(z.string().min(1));
 
@@ -145,6 +147,10 @@ export const updateJobSchema = z
     mechanic_payout: z.number().nonnegative().optional(),
     platform_fee: z.number().nonnegative().optional(),
     on_hand: z.boolean().optional(),
+    receipt_url: z.string().url().optional(),
+    receipt_status: receiptStatusSchema.optional(),
+    receipt_submitted_at: z.string().datetime().optional(),
+    parts_reimbursement_forfeited: z.boolean().optional(),
     cancellation_policy_accepted_at: z.string().datetime().optional(),
     payment_setup_at: z.string().datetime().optional(),
     matched_at: z.string().datetime().optional(),

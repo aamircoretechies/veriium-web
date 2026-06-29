@@ -2,11 +2,13 @@
 export const NO_SHOW_CHECK_PATH = "/api/jobs/no-show/check";
 export const DISPUTE_REMIND_PATH = "/api/jobs/dispute/remind";
 export const STALE_AVAILABILITY_PATH = "/api/mechanics/availability/stale";
+export const RECEIPT_CHECK_PATH = "/api/jobs/receipt/check";
 
 const DEFAULT_NO_SHOW_DELAY_SECONDS = 900;
 const DEFAULT_DISPUTE_REMINDER_DELAYS_SECONDS = [86400, 172800, 259200] as const;
 const DEFAULT_STALE_AVAILABILITY_SECONDS = 604800;
 const DEFAULT_CANCELLATION_FREE_HOURS = 24;
+const DEFAULT_RECEIPT_DEADLINE_SECONDS = 86400;
 
 export type DisputeReminderHours = 24 | 48 | 72;
 
@@ -104,6 +106,28 @@ export function getCancellationFreeHours(): number {
       raw,
     );
     return DEFAULT_CANCELLATION_FREE_HOURS;
+  }
+
+  return value;
+}
+
+/**
+ * Seconds after QUOTE before parts receipt forfeiture check (Exhibit A §5.3).
+ * Override: `RECEIPT_DEADLINE_SECONDS`.
+ */
+export function getReceiptDeadlineDelaySeconds(): number {
+  const raw = process.env.RECEIPT_DEADLINE_SECONDS?.trim();
+  if (!raw) {
+    return DEFAULT_RECEIPT_DEADLINE_SECONDS;
+  }
+
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value < 0) {
+    console.warn(
+      "[edge] Invalid RECEIPT_DEADLINE_SECONDS; using default:",
+      raw,
+    );
+    return DEFAULT_RECEIPT_DEADLINE_SECONDS;
   }
 
   return value;

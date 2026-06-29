@@ -52,10 +52,13 @@ export async function POST(request: Request) {
   }
 
   const from = params.From;
-  const body = params.Body;
+  const body = params.Body ?? "";
   const messageSid = params.MessageSid;
+  const numMedia = Number.parseInt(params.NumMedia ?? "0", 10);
+  const mediaUrl0 = params.MediaUrl0;
+  const mediaContentType0 = params.MediaContentType0;
 
-  if (!from || body === undefined || !messageSid) {
+  if (!from || !messageSid) {
     return new Response("Bad Request", { status: 400 });
   }
 
@@ -63,6 +66,13 @@ export async function POST(request: Request) {
     From: from,
     Body: body,
     MessageSid: messageSid,
+    ...(numMedia > 0
+      ? {
+          NumMedia: numMedia,
+          MediaUrl0: mediaUrl0,
+          MediaContentType0: mediaContentType0,
+        }
+      : {}),
   });
 
   return emptyTwimlResponse();

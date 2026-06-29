@@ -24,6 +24,7 @@ export {
   MECHANIC_STATUSES,
   PAYMENT_STATUSES,
   PAYMENT_TYPES,
+  RECEIPT_STATUSES,
   SERVICE_TYPES,
   type ActionItemStatus,
   type ActionItemType,
@@ -36,6 +37,7 @@ export {
   type MechanicStatus,
   type PaymentStatus,
   type PaymentType,
+  type ReceiptStatus,
   type ServiceType,
 } from "./enums";
 
@@ -73,6 +75,7 @@ export {
   parsedDiagnosisSchema,
   paymentStatusSchema,
   paymentTypeSchema,
+  receiptStatusSchema,
   serviceTypeSchema,
   updateActionItemSchema,
   updateDiagnosisSchema,

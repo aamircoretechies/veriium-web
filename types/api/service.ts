@@ -20,3 +20,9 @@ export const staleAvailabilityPayloadSchema = z.object({
 export type StaleAvailabilityPayload = z.infer<
   typeof staleAvailabilityPayloadSchema
 >;
+
+export const receiptCheckPayloadSchema = z.object({
+  jobId: z.string().min(1),
+});
+
+export type ReceiptCheckPayload = z.infer<typeof receiptCheckPayloadSchema>;

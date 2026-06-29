@@ -1,6 +1,8 @@
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { jobRequiresReceipt } from "@/lib/receipts/eligibility";
+import { scheduleReceiptDeadlineCheck } from "@/lib/receipts/schedule";
 import { sendSms } from "@/lib/twilio/sms";
 import { serviceQuoteDriver } from "@/lib/twilio/templates";
 import {
@@ -53,6 +55,13 @@ export async function handleQuote(
 
   const parsed = parseQuoteLine(remainder);
 
+  const receiptFields = jobRequiresReceipt({
+    parts_cost: parsed.partsCost,
+    on_hand: parsed.onHand,
+  })
+    ? { receipt_status: "pending" as const }
+    : {};
+
   const updated = await updateJobStatus(jobId, {
     status: "quote_submitted",
     quote_amount: parsed.quoteAmount,
@@ -61,7 +70,12 @@ export async function handleQuote(
     mechanic_payout: parsed.mechanicPayout,
     platform_fee: parsed.platformFee,
     on_hand: parsed.onHand,
+    ...receiptFields,
   });
+
+  if (jobRequiresReceipt(updated.fields)) {
+    await scheduleReceiptDeadlineCheck(jobId);
+  }
 
   await notifyDriverQuote(
     jobId,

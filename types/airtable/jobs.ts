@@ -1,6 +1,7 @@
 import type {
   DiagnosisCategory,
   JobStatus,
+  ReceiptStatus,
   ServiceType,
 } from "./enums";
 import type { AirtableDateTime, AirtableLinkedRecords } from "./fields";
@@ -37,6 +38,12 @@ export type JobFields = {
   mechanic_payout?: number;
   platform_fee?: number;
   on_hand?: boolean;
+
+  // Parts receipt (Exhibit A §5.3)
+  receipt_url?: string;
+  receipt_status?: ReceiptStatus;
+  receipt_submitted_at?: AirtableDateTime;
+  parts_reimbursement_forfeited?: boolean;
 
   // Payment (§5.4)
   cancellation_policy_accepted_at?: AirtableDateTime;

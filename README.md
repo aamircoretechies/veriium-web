@@ -15,5 +15,8 @@ Migration notes:
 | Matching (Phase 4) | `npm run matching:manual-test` | Tier escalation + SMS response matrix |
 | Payments (Phase 5) | `npm run payments:manual-test` | SetupIntent, PI helpers, idempotency (in-memory by default) |
 | Edge cases (Phase 6) | `npm run phase6:manual-test` | Service SMS, cancel/no-show/dispute/stale (in-memory by default) |
+| Receipt capture (M2) | `npm run receipt:manual-test` | Parts receipt upload, 24h deadline, MMS branch (in-memory by default) |
 
 For Stripe browser + webhook testing, see the **Stripe CLI end-to-end** section in `scripts/payments-manual-test.ts` (requires `stripe listen --forward-to localhost:3000/api/webhooks/stripe` and test keys in `.env.local`).
+
+MMS receipt upload requires server-side `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`. Optional `RECEIPT_DEADLINE_SECONDS` overrides the 24-hour QStash delay for staging/tests.

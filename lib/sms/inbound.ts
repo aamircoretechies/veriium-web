@@ -16,6 +16,11 @@ import {
 } from "@/lib/matching/respond";
 import { findMechanicByPhone } from "@/lib/mechanics/lookup";
 import { normalizeUsPhone } from "@/lib/phone";
+import { handleReceiptMms } from "@/lib/receipts/mms";
+import {
+  ReceiptAlreadySubmittedError,
+  ReceiptNotEligibleError,
+} from "@/lib/receipts/errors";
 import {
   handleServiceCommand,
   isServiceParsedCommand,
@@ -36,6 +41,9 @@ export type InboundSmsFields = {
   From: string;
   Body: string;
   MessageSid: string;
+  NumMedia?: number;
+  MediaUrl0?: string;
+  MediaContentType0?: string;
 };
 
 export type HandleInboundSmsResult = {
@@ -50,10 +58,17 @@ export type HandleInboundSmsResult = {
     | "unknown"
     | "no_mechanic"
     | "no_pending_job"
-    | "no_active_job";
+    | "no_active_job"
+    | "receipt_mms_handled"
+    | "receipt_mms_no_mechanic"
+    | "receipt_mms_no_active_job"
+    | "receipt_mms_not_required"
+    | "receipt_mms_download_failed"
+    | "receipt_mms_error";
   matchAction?: string;
   serviceAction?: string;
   driverAction?: string;
+  receiptJobId?: string;
 };
 
 function isMatchCommand(
@@ -68,12 +83,51 @@ function isMatchCommand(
 export async function handleInboundSms(
   fields: InboundSmsFields,
 ): Promise<HandleInboundSmsResult> {
-  const parsed = parseSmsCommand(fields.Body);
+  const parsed = parseSmsCommand(fields.Body ?? "");
   const base = {
     messageSid: fields.MessageSid,
     from: fields.From,
     parsed,
   };
+
+  if ((fields.NumMedia ?? 0) > 0 && fields.MediaUrl0) {
+    try {
+      const mmsResult = await handleReceiptMms({
+        from: fields.From,
+        mediaUrl: fields.MediaUrl0,
+        mediaContentType: fields.MediaContentType0,
+      });
+
+      if (mmsResult.action === "receipt_mms_handled") {
+        console.log(
+          `[sms/inbound] Receipt MMS for job ${mmsResult.jobId} (${fields.MessageSid})`,
+        );
+        return {
+          ...base,
+          action: "receipt_mms_handled",
+          receiptJobId: mmsResult.jobId,
+        };
+      }
+
+      console.log(
+        `[sms/inbound] Receipt MMS not applied (${mmsResult.action}, ${fields.MessageSid})`,
+      );
+      return { ...base, action: mmsResult.action };
+    } catch (error) {
+      if (
+        error instanceof ReceiptAlreadySubmittedError ||
+        error instanceof ReceiptNotEligibleError
+      ) {
+        console.warn(
+          `[sms/inbound] Ignored receipt MMS (${fields.MessageSid}):`,
+          error.message,
+        );
+        return { ...base, action: "ignored" };
+      }
+      console.error(`[sms/inbound] Receipt MMS error (${fields.MessageSid}):`, error);
+      return { ...base, action: "receipt_mms_error" };
+    }
+  }
 
   if (parsed.kind === "unknown") {
     console.log(

@@ -133,9 +133,21 @@ export const ACTION_ITEM_TYPES = [
   "payment_failed",
   "charge_dispute",
   "cancellation_review",
+  "receipt_overdue",
+  "receipt_review",
 ] as const;
 
 export type ActionItemType = (typeof ACTION_ITEM_TYPES)[number];
+
+/** Exhibit A §5.3 — parts receipt submission state (field names INFERRED). */
+export const RECEIPT_STATUSES = [
+  "pending",
+  "submitted",
+  "overdue",
+  "invalid",
+] as const;
+
+export type ReceiptStatus = (typeof RECEIPT_STATUSES)[number];
 
 export const ACTION_ITEM_STATUSES = [
   "open",

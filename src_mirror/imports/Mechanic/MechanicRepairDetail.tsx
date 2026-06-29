@@ -1,7 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Upload, X, ArrowLeft } from "lucide-react";
+import ReceiptUploadPanel from "@/app/components/mechanic/ReceiptUploadPanel";
 import MechanicTopNav from "./MechanicTopNav";
 import Footer from "../../../app/components/Footer";
 import imgCarRepair from "../LandingDesktopV2/4943cb7fc6a48d7dc22bbbde539341ff388b0172.webp";
@@ -137,12 +138,38 @@ export default function MechanicRepairDetail() {
   const [repairSummary, setRepairSummary] = useState("");
   const [workNotes, setWorkNotes] = useState("");
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [liveReceiptStatus, setLiveReceiptStatus] = useState<string | null>(null);
+  const [liveJobLoaded, setLiveJobLoaded] = useState(false);
+
+  const loadLiveReceiptStatus = useCallback(async (id: string) => {
+    try {
+      const sessionToken = localStorage.getItem("veriium_mechanic_token");
+      const headers: Record<string, string> = {};
+      if (sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      }
+
+      const res = await fetch(`/api/jobs/${id}/receipt`, { headers });
+      if (!res.ok) {
+        return;
+      }
+
+      const data = (await res.json()) as { receiptStatus?: string | null };
+      setLiveReceiptStatus(data.receiptStatus ?? null);
+      setLiveJobLoaded(true);
+    } catch {
+      // Mock/demo jobs may not exist in Airtable
+    }
+  }, []);
 
   useEffect(() => {
     if (repairId && mockRepairs[repairId]) {
       setJob(mockRepairs[repairId]);
     }
-  }, [repairId]);
+    if (repairId) {
+      void loadLiveReceiptStatus(repairId);
+    }
+  }, [repairId, loadLiveReceiptStatus]);
 
   if (!job) {
     return (
@@ -243,6 +270,16 @@ export default function MechanicRepairDetail() {
 
           <div className="border border-[#D2D2D2] rounded-[12px] p-[32px] flex flex-col gap-[20px]"><div className="flex justify-between items-center"><h2 className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[20px] text-black">Initial Diagnosis</h2><Badge variant={job.severity === "High" ? "danger" : job.severity === "Medium" ? "warning" : "success"}>{job.severity} Severity</Badge></div><p className="text-[15px] leading-relaxed text-gray-700 bg-gray-50 p-4 rounded-lg">{job.diagnosisSummary}</p>{job.customerNotes && (<div className="mt-2"><h3 className="text-[14px] font-bold text-gray-900 mb-1">Customer Notes:</h3><p className="text-[14px] text-gray-600 italic">"{job.customerNotes}"</p></div>)}</div>
         </div>
+
+        {repairId && liveJobLoaded && (
+          <div className="mt-4">
+            <ReceiptUploadPanel
+              jobId={repairId}
+              receiptStatus={liveReceiptStatus}
+              onSubmitted={() => void loadLiveReceiptStatus(repairId)}
+            />
+          </div>
+        )}
 
         {job.status === "Repair Started" && (
           <div id="completion-form" className="w-full border border-gray-200 bg-gray-50 rounded-[12px] p-[32px] md:p-[48px] flex flex-col gap-[32px] mt-4 shadow-sm">

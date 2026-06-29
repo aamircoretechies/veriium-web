@@ -151,3 +151,10 @@ export async function buildSignedJobUrl(jobId: string): Promise<string> {
   const appUrl = getEnv().APP_URL.replace(/\/$/, "");
   return `${appUrl}/j/${jobId}?token=${encodeURIComponent(token)}`;
 }
+
+/** Signed URL for mechanic per-job fallback page (Build Scope §3.2). */
+export async function buildSignedMechanicJobUrl(jobId: string): Promise<string> {
+  const token = await signJobAccessToken(jobId);
+  const appUrl = getEnv().APP_URL.replace(/\/$/, "");
+  return `${appUrl}/m/job/${jobId}?token=${encodeURIComponent(token)}`;
+}
