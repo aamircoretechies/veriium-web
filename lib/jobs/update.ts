@@ -26,6 +26,7 @@ const STATUS_TIMESTAMP_FIELDS = {
   quote_pending_admin: "quote_pending_admin_at",
   quote_submitted: "quote_submitted_at",
   quote_approved: "quote_approved_at",
+  awaiting_parts_consent: "awaiting_parts_consent_at",
   quote_declined: "quote_declined_at",
   requote_submitted: "requote_submitted_at",
   in_progress: "in_progress_at",

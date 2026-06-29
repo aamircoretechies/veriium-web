@@ -44,6 +44,7 @@ export const JOB_STATUSES = [
   "quote_pending_admin",
   "quote_submitted",
   "quote_approved",
+  "awaiting_parts_consent",
   "quote_declined",
   "requote_submitted",
   "in_progress",

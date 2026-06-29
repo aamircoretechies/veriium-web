@@ -39,6 +39,11 @@ export type JobFields = {
   platform_fee?: number;
   on_hand?: boolean;
 
+  // Non-OEM / used parts consent (Exhibit A §5.8 — field names INFERRED)
+  non_oem_or_used_parts?: boolean;
+  non_oem_parts_description?: string;
+  non_oem_consent_at?: AirtableDateTime;
+
   // Quote hardening (Exhibit A §3.4 — quote_timeout_qstash_id INFERRED)
   quote_timeout_qstash_id?: string;
 
@@ -69,6 +74,7 @@ export type JobFields = {
   quote_pending_admin_at?: AirtableDateTime;
   quote_submitted_at?: AirtableDateTime;
   quote_approved_at?: AirtableDateTime;
+  awaiting_parts_consent_at?: AirtableDateTime;
   quote_declined_at?: AirtableDateTime;
   requote_submitted_at?: AirtableDateTime;
   requote_approved_at?: AirtableDateTime;

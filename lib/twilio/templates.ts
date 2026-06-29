@@ -105,7 +105,17 @@ type ServiceQuoteDetails = {
   quoteAmount: number;
   partsCost: number;
   onHand: boolean;
+  nonOemOrUsedParts?: boolean;
+  nonOemPartsDescription?: string;
 };
+
+function truncateDescription(description: string, maxLength = 80): string {
+  const trimmed = description.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 3)}...`;
+}
 
 /** §7.2 — Driver quote approval request. */
 export function serviceQuoteDriver(details: ServiceQuoteDetails): string {
@@ -113,8 +123,24 @@ export function serviceQuoteDriver(details: ServiceQuoteDetails): string {
   const onHandNote = details.onHand
     ? " Parts are on hand — repair can start right after approval."
     : "";
+  const nonOemNote = details.nonOemOrUsedParts
+    ? ` Parts may include non-OEM or used components.${
+        details.nonOemPartsDescription
+          ? ` Details: ${truncateDescription(details.nonOemPartsDescription)}.`
+          : ""
+      }`
+    : "";
 
-  return `Veriium: Your quote is ready — labor $${details.quoteAmount.toFixed(2)}, parts $${details.partsCost.toFixed(2)} (total $${total.toFixed(2)}).${onHandNote} Reply APPROVE to accept or DECLINE to cancel.`;
+  return `Veriium: Your quote is ready — labor $${details.quoteAmount.toFixed(2)}, parts $${details.partsCost.toFixed(2)} (total $${total.toFixed(2)}).${nonOemNote}${onHandNote} Reply APPROVE to accept or DECLINE to cancel.`;
+}
+
+/** Exhibit A §5.8 — Driver consent for non-OEM or used parts. */
+export function partsConsentDriver(description?: string): string {
+  const detailNote = description
+    ? ` Details: ${truncateDescription(description)}.`
+    : "";
+
+  return `Veriium: Your mechanic proposed non-OEM or used parts for this repair.${detailNote} Reply YES to consent and proceed.`;
 }
 
 /** Exhibit A §3.4 — driver notification after quote decline or 2h timeout. */

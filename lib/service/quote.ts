@@ -43,6 +43,10 @@ export async function handleQuote(
     mechanic_payout: parsed.mechanicPayout,
     platform_fee: parsed.platformFee,
     on_hand: parsed.onHand,
+    non_oem_or_used_parts: parsed.nonOemOrUsedParts,
+    ...(parsed.nonOemPartsDescription
+      ? { non_oem_parts_description: parsed.nonOemPartsDescription }
+      : {}),
     ...receiptFields,
   };
 

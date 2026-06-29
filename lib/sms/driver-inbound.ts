@@ -1,5 +1,6 @@
 import { confirmJob } from "@/lib/disputes/confirm";
 import { disputeJob } from "@/lib/disputes/dispute";
+import { grantPartsConsent } from "@/lib/parts/consent";
 import {
   approveQuote,
   declineQuote,
@@ -40,6 +41,10 @@ export function isDriverResponseCommand(
     );
   }
 
+  if (parsed.kind === "match" && parsed.command === "YES") {
+    return job.fields.status === "awaiting_parts_consent";
+  }
+
   return false;
 }
 
@@ -76,6 +81,10 @@ export async function handleDriverInbound(
       return declineRequote(job.id);
     }
     return declineQuote(job.id);
+  }
+
+  if (parsed.kind === "match" && parsed.command === "YES") {
+    return grantPartsConsent(job.id);
   }
 
   throw new Error("handleDriverInbound called with non-driver command");

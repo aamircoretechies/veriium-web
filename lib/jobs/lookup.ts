@@ -121,6 +121,7 @@ export async function findJobAwaitingDriverResponse(
   const client = getAirtableClient();
   const driverId = escapeAirtableString(driver.id);
   const statusFilter = buildStatusOrFormula([
+    "awaiting_parts_consent",
     "completed_pending_confirmation",
     "quote_submitted",
     "requote_submitted",

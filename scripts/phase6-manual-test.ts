@@ -702,6 +702,84 @@ async function main(): Promise<void> {
     assert((await countPaymentsByKey(diagnosticKey(jobId))) === 1, "diagnostic PI");
   });
 
+  console.log("\n2b. M6 USED parts consent:");
+  await trackResult(
+    "QUOTE USED → APPROVE → YES → STARTED → in_progress",
+    async () => {
+      await resetMechanicAvailable(sharedMechanicId);
+      const mechanicId = await seedMechanic("02b");
+      const driverId = await seedDriver("02b");
+      const jobId = await prepareAcceptedJob(driverId, mechanicId);
+
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ENROUTE"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ARRIVED"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("DIAGNOSING"));
+      await handleServiceCommand(
+        jobId,
+        mechanicId,
+        parseSmsCommand("QUOTE $245 PARTS $80 USED alt brake pads"),
+      );
+
+      let job = await getJobById(jobId);
+      assert(job.fields.status === "quote_submitted", "quote_submitted");
+      assert(job.fields.non_oem_or_used_parts === true, "non_oem_or_used_parts");
+      assert(
+        job.fields.non_oem_parts_description === "alt brake pads",
+        "non_oem_parts_description",
+      );
+
+      await handleDriverInbound(job, parseSmsCommand("APPROVE"));
+      job = await getJobById(jobId);
+      assert(job.fields.status === "awaiting_parts_consent", "awaiting_parts_consent");
+      assert(Boolean(job.fields.quote_approved_at), "quote_approved_at");
+      assert(
+        Boolean(job.fields.awaiting_parts_consent_at),
+        "awaiting_parts_consent_at",
+      );
+
+      await handleDriverInbound(job, parseSmsCommand("YES"));
+      job = await getJobById(jobId);
+      assert(Boolean(job.fields.non_oem_consent_at), "non_oem_consent_at");
+      assert(job.fields.status === "quote_approved", "quote_approved after YES");
+
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("STARTED"));
+      job = await getJobById(jobId);
+      assert(job.fields.status === "in_progress", "in_progress");
+    },
+  );
+
+  await trackResult(
+    "QUOTE USED ON_HAND → APPROVE → YES → in_progress",
+    async () => {
+      await resetMechanicAvailable(sharedMechanicId);
+      const mechanicId = await seedMechanic("02c");
+      const driverId = await seedDriver("02c");
+      const jobId = await prepareAcceptedJob(driverId, mechanicId);
+
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ENROUTE"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ARRIVED"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("DIAGNOSING"));
+      await handleServiceCommand(
+        jobId,
+        mechanicId,
+        parseSmsCommand("QUOTE $245 PARTS $80 USED ON_HAND"),
+      );
+
+      let job = await getJobById(jobId);
+      assert(job.fields.on_hand === true, "on_hand");
+      assert(job.fields.non_oem_or_used_parts === true, "non_oem_or_used_parts");
+
+      await handleDriverInbound(job, parseSmsCommand("APPROVE"));
+      job = await getJobById(jobId);
+      assert(job.fields.status === "awaiting_parts_consent", "awaiting_parts_consent");
+
+      await handleDriverInbound(job, parseSmsCommand("YES"));
+      job = await getJobById(jobId);
+      assert(job.fields.status === "in_progress", "in_progress after YES");
+      assert(Boolean(job.fields.non_oem_consent_at), "non_oem_consent_at");
+    },
+  );
+
   console.log("\n3. Early cancel:");
   await trackResult("+48h appointment → cancel, no fee", async () => {
     await resetMechanicAvailable(sharedMechanicId);

@@ -16,12 +16,20 @@ async function notifyDriverQuote(jobId: string): Promise<void> {
   const quoteAmount = job.fields.quote_amount ?? 0;
   const partsCost = job.fields.parts_cost ?? 0;
   const onHand = job.fields.on_hand ?? false;
+  const nonOemOrUsedParts = job.fields.non_oem_or_used_parts ?? false;
+  const nonOemPartsDescription = job.fields.non_oem_parts_description;
 
   try {
     const driver = await getDriverById(driverId);
     await sendSms(
       driver.fields.phone,
-      serviceQuoteDriver({ quoteAmount, partsCost, onHand }),
+      serviceQuoteDriver({
+        quoteAmount,
+        partsCost,
+        onHand,
+        nonOemOrUsedParts,
+        nonOemPartsDescription,
+      }),
     );
   } catch (error) {
     console.error(

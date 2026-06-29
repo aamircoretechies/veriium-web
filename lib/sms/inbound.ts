@@ -7,6 +7,7 @@ import {
 } from "@/lib/jobs/lookup";
 import { InvalidDriverQuoteResponseError } from "@/lib/service/quote-response";
 import { InvalidDriverRequoteResponseError } from "@/lib/service/requote-response";
+import { InvalidPartsConsentError } from "@/lib/parts/consent";
 import {
   InvalidMatchResponseError,
   MechanicNotAssignedError,
@@ -158,7 +159,8 @@ export async function handleInboundSms(
         error instanceof InvalidDriverQuoteResponseError ||
         error instanceof InvalidDriverRequoteResponseError ||
         error instanceof InvalidDriverConfirmError ||
-        error instanceof InvalidDriverDisputeError
+        error instanceof InvalidDriverDisputeError ||
+        error instanceof InvalidPartsConsentError
       ) {
         console.warn(
           `[sms/inbound] Ignored driver response for job ${driverJob.id}:`,

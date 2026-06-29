@@ -1,6 +1,7 @@
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { sendPartsConsentSms } from "@/lib/parts/consent";
 import { createDiagnosticFeeIntent } from "@/lib/payments/diagnostic-fee";
 import { cancelQuoteTimeout } from "@/lib/quotes/schedule";
 import { sendSms } from "@/lib/twilio/sms";
@@ -24,7 +25,7 @@ export class InvalidDriverQuoteResponseError extends Error {
 export type DriverQuoteResponseResult = {
   jobId: string;
   status: string;
-  action: "quote_approved" | "in_progress" | "cancelled";
+  action: "quote_approved" | "in_progress" | "awaiting_parts_consent" | "cancelled";
 };
 
 async function notifyDriverQuoteDeclined(jobId: string): Promise<void> {
@@ -66,6 +67,18 @@ export async function approveQuote(
       ? { original_parts_cost: originalPartsCost }
       : {}),
   });
+
+  if (job.fields.non_oem_or_used_parts) {
+    const updated = await updateJobStatus(jobId, {
+      status: "awaiting_parts_consent",
+    });
+    await sendPartsConsentSms(jobId);
+    return {
+      jobId,
+      status: updated.fields.status,
+      action: "awaiting_parts_consent",
+    };
+  }
 
   if (job.fields.on_hand) {
     const updated = await updateJobStatus(jobId, { status: "in_progress" });
