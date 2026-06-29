@@ -92,13 +92,23 @@ async function main(): Promise<void> {
   process.env.FIND_MECHANIC_MOCK = "1";
 
   const { searchMechanics } = await import("@/lib/mechanics/search");
+  const { isGwinnettZip } = await import("@/lib/bookings/validate-intake");
+  const { GWINNETT_ZIP_COUNT } = await import("@/lib/constants/gwinnett-zips");
 
   const results: TestResult[] = [];
 
   results.push(
+    await runTest("pilot_allowlist_has_27_zips", async () => {
+      assert(GWINNETT_ZIP_COUNT === 27, `expected 27 pilot ZIPs, got ${GWINNETT_ZIP_COUNT}`);
+      assert(isGwinnettZip("30011"), "30011 should be in pilot allowlist");
+      assert(!isGwinnettZip("90210"), "90210 should be outside pilot allowlist");
+    }),
+  );
+
+  results.push(
     await runTest("baseline_returns_approved_only", async () => {
       const { mechanics, total } = await searchMechanics(query());
-      assert(total === 7, `expected 7 approved mechanics, got ${total}`);
+      assert(total === 8, `expected 8 approved mechanics, got ${total}`);
       assert(
         !mechanics.some((m) => m.name === "Pending Applicant"),
         "under_review mechanic should be excluded",
@@ -134,7 +144,7 @@ async function main(): Promise<void> {
       const { mechanics } = await searchMechanics(
         query({ availableTodayOnly: true }),
       );
-      assert(mechanics.length === 5, `expected 5 available today, got ${mechanics.length}`);
+      assert(mechanics.length === 6, `expected 6 available today, got ${mechanics.length}`);
       assert(
         mechanics.every((m) => m.availableToday),
         "all results should be available today",
@@ -145,7 +155,7 @@ async function main(): Promise<void> {
   results.push(
     await runTest("service_type_mobile", async () => {
       const { mechanics } = await searchMechanics(query({ serviceType: "mobile" }));
-      assert(mechanics.length === 5, `expected 5 mobile mechanics, got ${mechanics.length}`);
+      assert(mechanics.length === 6, `expected 6 mobile mechanics, got ${mechanics.length}`);
       assert(
         mechanics.every((m) => m.mobileAvailable),
         "all results should offer mobile service",
@@ -211,6 +221,23 @@ async function main(): Promise<void> {
           "results should be sorted by ascending distance",
         );
       }
+    }),
+  );
+
+  results.push(
+    await runTest("zip_30011_returns_auburn_mechanic", async () => {
+      const { mechanics, total } = await searchMechanics(query({ zip: "30011" }));
+      assert(total === 1, `expected 1 mechanic near 30011, got ${total}`);
+      assert(mechanics[0]?.name === "Tyler Brooks", "Tyler Brooks serves 30011");
+      assert(mechanics[0]?.city === "Auburn", "listing city should resolve from centroid");
+    }),
+  );
+
+  results.push(
+    await runTest("invalid_zip_returns_empty", async () => {
+      const { mechanics, total } = await searchMechanics(query({ zip: "99999" }));
+      assert(total === 0, `expected 0 mechanics for invalid ZIP, got ${total}`);
+      assert(mechanics.length === 0, "mechanics array should be empty");
     }),
   );
 

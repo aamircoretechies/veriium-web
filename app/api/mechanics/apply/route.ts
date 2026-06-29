@@ -3,6 +3,7 @@ import {
   DuplicatePhoneError,
   submitMechanicApplication,
 } from "@/lib/mechanics/apply";
+import { InvalidZipError } from "@/lib/mechanics/errors";
 import { InvalidPhoneError } from "@/lib/phone";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { mechanicApplicationSchema } from "@/types/api/mechanic-application";
@@ -33,6 +34,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof InvalidPhoneError) {
       return jsonError(400, "invalid_phone", error.message);
+    }
+    if (error instanceof InvalidZipError) {
+      return jsonError(400, "validation_error", error.message);
     }
     throw error;
   }

@@ -11,37 +11,12 @@ import { Checkbox } from '@/app/components/ui/checkbox';
 import { Switch } from '@/app/components/ui/switch';
 import Footer from '../../../app/components/Footer';
 import PublicHeader from '@/app/components/PublicHeader';
+import { GWINNETT_ZIP_LOCATIONS } from '@/lib/constants/gwinnett-zips';
 
-// Gwinnett County, GA — eligible pilot ZIP codes (PO Box-only ZIPs excluded)
-const GWINNETT_ZIPS = [
-  { zip: "30011", city: "Auburn" },
-  { zip: "30017", city: "Grayson" },
-  { zip: "30019", city: "Dacula" },
-  { zip: "30024", city: "Suwanee" },
-  { zip: "30039", city: "Snellville" },
-  { zip: "30043", city: "Lawrenceville" },
-  { zip: "30044", city: "Lawrenceville" },
-  { zip: "30045", city: "Lawrenceville" },
-  { zip: "30046", city: "Lawrenceville" },
-  { zip: "30047", city: "Lilburn" },
-  { zip: "30052", city: "Loganville" },
-  { zip: "30058", city: "Lithonia (Gwinnett)" },
-  { zip: "30071", city: "Norcross" },
-  { zip: "30078", city: "Snellville" },
-  { zip: "30084", city: "Tucker (Gwinnett)" },
-  { zip: "30087", city: "Stone Mountain (Gwinnett)" },
-  { zip: "30092", city: "Peachtree Corners" },
-  { zip: "30093", city: "Norcross" },
-  { zip: "30096", city: "Duluth" },
-  { zip: "30097", city: "Duluth" },
-  { zip: "30340", city: "Doraville (Gwinnett)" },
-  { zip: "30360", city: "Dunwoody (Gwinnett)" },
-  { zip: "30517", city: "Braselton (Gwinnett)" },
-  { zip: "30518", city: "Buford" },
-  { zip: "30519", city: "Buford" },
-  { zip: "30548", city: "Hoschton" },
-  { zip: "30620", city: "Bethlehem" },
-] as const;
+const GWINNETT_ZIPS = GWINNETT_ZIP_LOCATIONS.map(({ zip, city }) => ({
+  zip,
+  city,
+}));
 
 async function parseApiError(res: Response): Promise<string> {
   try {

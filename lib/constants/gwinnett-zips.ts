@@ -1,5 +1,40 @@
-/** Gwinnett County pilot ZIP allowlist (PDF Appendix A) with centroid metadata. */
+/** Gwinnett County pilot ZIP allowlist (Exhibit A §Service Area) with centroid metadata. */
 export const GWINNETT_ZIP_LOCATIONS = [
+  {
+    zip: "30011",
+    city: "Auburn",
+    state: "GA",
+    lat: 34.0137,
+    lng: -83.8277,
+  },
+  {
+    zip: "30017",
+    city: "Grayson",
+    state: "GA",
+    lat: 33.8937,
+    lng: -83.9557,
+  },
+  {
+    zip: "30019",
+    city: "Dacula",
+    state: "GA",
+    lat: 33.9837,
+    lng: -83.898,
+  },
+  {
+    zip: "30024",
+    city: "Suwanee",
+    state: "GA",
+    lat: 34.063,
+    lng: -84.083,
+  },
+  {
+    zip: "30039",
+    city: "Snellville",
+    state: "GA",
+    lat: 33.8573,
+    lng: -84.0199,
+  },
   {
     zip: "30043",
     city: "Lawrenceville",
@@ -29,6 +64,69 @@ export const GWINNETT_ZIP_LOCATIONS = [
     lng: -83.985,
   },
   {
+    zip: "30047",
+    city: "Lilburn",
+    state: "GA",
+    lat: 33.8901,
+    lng: -84.1429,
+  },
+  {
+    zip: "30052",
+    city: "Loganville",
+    state: "GA",
+    lat: 33.839,
+    lng: -83.9007,
+  },
+  {
+    zip: "30058",
+    city: "Lithonia",
+    state: "GA",
+    lat: 33.7487,
+    lng: -84.0932,
+  },
+  {
+    zip: "30071",
+    city: "Norcross",
+    state: "GA",
+    lat: 33.9412,
+    lng: -84.2136,
+  },
+  {
+    zip: "30078",
+    city: "Snellville",
+    state: "GA",
+    lat: 33.8562,
+    lng: -84.0191,
+  },
+  {
+    zip: "30084",
+    city: "Tucker",
+    state: "GA",
+    lat: 33.8545,
+    lng: -84.2171,
+  },
+  {
+    zip: "30087",
+    city: "Stone Mountain",
+    state: "GA",
+    lat: 33.804,
+    lng: -84.1702,
+  },
+  {
+    zip: "30092",
+    city: "Peachtree Corners",
+    state: "GA",
+    lat: 33.9715,
+    lng: -84.221,
+  },
+  {
+    zip: "30093",
+    city: "Norcross",
+    state: "GA",
+    lat: 33.9654,
+    lng: -84.2477,
+  },
+  {
     zip: "30096",
     city: "Duluth",
     state: "GA",
@@ -43,32 +141,25 @@ export const GWINNETT_ZIP_LOCATIONS = [
     lng: -84.163,
   },
   {
-    zip: "30071",
-    city: "Norcross",
+    zip: "30340",
+    city: "Doraville",
     state: "GA",
-    lat: 33.9412,
-    lng: -84.2136,
+    lat: 33.8982,
+    lng: -84.2705,
   },
   {
-    zip: "30092",
-    city: "Peachtree Corners",
+    zip: "30360",
+    city: "Dunwoody",
     state: "GA",
-    lat: 33.9715,
-    lng: -84.221,
+    lat: 33.9425,
+    lng: -84.334,
   },
   {
-    zip: "30039",
-    city: "Snellville",
+    zip: "30517",
+    city: "Braselton",
     state: "GA",
-    lat: 33.8573,
-    lng: -84.0199,
-  },
-  {
-    zip: "30024",
-    city: "Suwanee",
-    state: "GA",
-    lat: 34.063,
-    lng: -84.083,
+    lat: 34.1093,
+    lng: -83.7627,
   },
   {
     zip: "30518",
@@ -76,6 +167,27 @@ export const GWINNETT_ZIP_LOCATIONS = [
     state: "GA",
     lat: 34.1207,
     lng: -83.9893,
+  },
+  {
+    zip: "30519",
+    city: "Buford",
+    state: "GA",
+    lat: 34.0976,
+    lng: -83.958,
+  },
+  {
+    zip: "30548",
+    city: "Hoschton",
+    state: "GA",
+    lat: 34.0968,
+    lng: -83.7613,
+  },
+  {
+    zip: "30620",
+    city: "Bethlehem",
+    state: "GA",
+    lat: 33.9315,
+    lng: -83.7138,
   },
 ] as const;
 
@@ -85,3 +197,5 @@ export type GwinnettZipCode = GwinnettZipLocation["zip"];
 /** Pilot ZIP strings only — derived from {@link GWINNETT_ZIP_LOCATIONS}. */
 export const GWINNETT_ZIP_CODES: readonly GwinnettZipCode[] =
   GWINNETT_ZIP_LOCATIONS.map((location) => location.zip);
+
+export const GWINNETT_ZIP_COUNT = GWINNETT_ZIP_CODES.length;

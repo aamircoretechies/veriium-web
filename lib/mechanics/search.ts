@@ -1,3 +1,4 @@
+import { isGwinnettZip } from "@/lib/bookings/validate-intake";
 import { getMechanicSearchClient } from "@/lib/mechanics/search-client";
 import { buildMechanicSearchFormula } from "@/lib/mechanics/search-formula";
 import { mapMechanicToListing } from "@/lib/mechanics/search-mapper";
@@ -62,6 +63,10 @@ function applyPostFilters(
 export async function searchMechanics(
   query: MechanicSearchQuery,
 ): Promise<MechanicSearchResponse> {
+  if (query.zip && !isGwinnettZip(query.zip)) {
+    return { mechanics: [], total: 0 };
+  }
+
   const client = await getMechanicSearchClient();
   const response = await client.listRecords<MechanicFields>("mechanics", {
     filterByFormula: buildMechanicSearchFormula(query),

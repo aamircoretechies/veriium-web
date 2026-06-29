@@ -1,4 +1,5 @@
 import { getAirtableClient } from "@/lib/airtable";
+import { isGwinnettZip } from "@/lib/bookings/validate-intake";
 import {
   applicationReceived,
   sendSms,
@@ -8,6 +9,7 @@ import type { MechanicStatus } from "@/types/airtable/enums";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 import type { MechanicFields } from "@/types/airtable/mechanics";
 import { createMechanicSchema } from "@/types/airtable/schemas";
+import { InvalidZipError } from "./errors";
 import { findMechanicByPhone } from "./lookup";
 import { mapServiceCategories } from "./map-categories";
 
@@ -62,6 +64,16 @@ function parseZipCodes(
   return [...new Set(zips.filter(Boolean))];
 }
 
+function assertPilotServiceZips(zips: string[]): void {
+  for (const zip of zips) {
+    if (!isGwinnettZip(zip)) {
+      throw new InvalidZipError(
+        "This ZIP code is outside our current service area.",
+      );
+    }
+  }
+}
+
 function attachmentFromUrl(
   url?: string,
 ): Array<{ url: string }> | undefined {
@@ -110,6 +122,9 @@ export async function submitMechanicApplication(
     throw new DuplicatePhoneError();
   }
 
+  const serviceZipCodes = parseZipCodes(input.primaryZip, input.additionalZips);
+  assertPilotServiceZips(serviceZipCodes);
+
   const mechanicFields = createMechanicSchema.parse({
     status: "application_submitted",
     full_name: input.fullName,
@@ -120,7 +135,7 @@ export async function submitMechanicApplication(
     years_experience: input.yearsExperience,
     ase_certified: input.aseCertified,
     other_certifications: input.otherCertifications,
-    service_zip_codes: parseZipCodes(input.primaryZip, input.additionalZips),
+    service_zip_codes: serviceZipCodes,
     service_categories: mapServiceCategories(input.services),
     tools_confirmed: input.toolsConfirmed,
     transport_confirmed: input.transportConfirmed,
