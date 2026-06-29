@@ -38,3 +38,10 @@ export const requoteTimeoutPayloadSchema = z.object({
 });
 
 export type RequoteTimeoutPayload = z.infer<typeof requoteTimeoutPayloadSchema>;
+
+export const paymentRetryPayloadSchema = z.object({
+  jobId: z.string().min(1),
+  paymentType: z.enum(["diagnostic_fee", "cancellation_fee"]),
+});
+
+export type PaymentRetryPayload = z.infer<typeof paymentRetryPayloadSchema>;

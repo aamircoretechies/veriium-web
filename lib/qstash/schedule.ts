@@ -26,7 +26,8 @@ export async function scheduleJob<TBody = unknown>(
     process.env.PHASE6_MANUAL_TEST === "1" ||
     process.env.RECEIPT_MANUAL_TEST === "1" ||
     process.env.QUOTE_MANUAL_TEST === "1" ||
-    process.env.REQUOTE_MANUAL_TEST === "1"
+    process.env.REQUOTE_MANUAL_TEST === "1" ||
+    process.env.PAYMENTS_MANUAL_TEST === "1"
   ) {
     return {
       messageId: `mock-qstash-${Date.now()}`,

@@ -5,6 +5,9 @@ export const STALE_AVAILABILITY_PATH = "/api/mechanics/availability/stale";
 export const RECEIPT_CHECK_PATH = "/api/jobs/receipt/check";
 export const QUOTE_TIMEOUT_CHECK_PATH = "/api/jobs/quote/timeout";
 export const REQUOTE_TIMEOUT_CHECK_PATH = "/api/jobs/requote/timeout";
+export const PAYMENT_RETRY_PATH = "/api/jobs/payment/retry";
+
+const DEFAULT_PAYMENT_RETRY_DELAY_SECONDS = 86400;
 
 const DEFAULT_NO_SHOW_DELAY_SECONDS = 900;
 const DEFAULT_DISPUTE_REMINDER_DELAYS_SECONDS = [86400, 172800, 259200] as const;
@@ -176,6 +179,28 @@ export function getRequoteTimeoutDelaySeconds(): number {
       raw,
     );
     return DEFAULT_REQUOTE_TIMEOUT_SECONDS;
+  }
+
+  return value;
+}
+
+/**
+ * Seconds before retrying a failed off-session diagnostic/cancellation charge (Exhibit A §4).
+ * Override: `PAYMENT_RETRY_DELAY_SECONDS`.
+ */
+export function getPaymentRetryDelaySeconds(): number {
+  const raw = process.env.PAYMENT_RETRY_DELAY_SECONDS?.trim();
+  if (!raw) {
+    return DEFAULT_PAYMENT_RETRY_DELAY_SECONDS;
+  }
+
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value < 0) {
+    console.warn(
+      "[edge] Invalid PAYMENT_RETRY_DELAY_SECONDS; using default:",
+      raw,
+    );
+    return DEFAULT_PAYMENT_RETRY_DELAY_SECONDS;
   }
 
   return value;

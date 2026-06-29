@@ -1,4 +1,4 @@
-import { getAirtableClient } from "@/lib/airtable";
+import { createCancellationReviewActionItem } from "@/lib/action-items/create";
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
@@ -20,11 +20,7 @@ import {
   cancellationDriver,
   cancellationMechanic,
 } from "@/lib/twilio/templates";
-import type { ActionItemFields } from "@/types/airtable/action-items";
 import type { JobStatus } from "@/types/airtable/enums";
-import type { JobFields } from "@/types/airtable/jobs";
-import type { AirtableRecord } from "@/types/airtable/common";
-import { createActionItemSchema } from "@/types/airtable/schemas";
 import { isLateCancellation } from "./fee-window";
 import {
   resolvePartsCancelAmount,
@@ -80,27 +76,6 @@ function assertJobCancellable(jobId: string, status: JobStatus): void {
     }
     throw error;
   }
-}
-
-async function createCancellationReviewActionItem(
-  job: AirtableRecord<JobFields>,
-  title: string,
-  notes: string,
-): Promise<void> {
-  const actionItemFields = createActionItemSchema.parse({
-    type: "cancellation_review",
-    status: "open",
-    title,
-    notes,
-    job: [job.id],
-    driver: job.fields.driver,
-    mechanic: job.fields.mechanic,
-  });
-
-  const client = getAirtableClient();
-  await client.createRecord<ActionItemFields>("action-items", actionItemFields, {
-    typecast: true,
-  });
 }
 
 async function notifyCancellationParties(
@@ -174,11 +149,13 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
         error,
       );
 
-      await createCancellationReviewActionItem(
-        job,
-        "Late cancellation fee failed",
-        `Could not charge cancellation fee for job ${jobId}.`,
-      );
+      await createCancellationReviewActionItem({
+        jobId: job.id,
+        title: "Late cancellation fee failed",
+        notes: `Could not charge cancellation fee for job ${jobId}.`,
+        driver: job.fields.driver,
+        mechanic: job.fields.mechanic,
+      });
     }
   }
 
@@ -198,11 +175,13 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
         error,
       );
 
-      await createCancellationReviewActionItem(
-        job,
-        "Cancellation parts charge failed",
-        `Could not charge installed parts ($${partsChargeAmount.toFixed(2)}) for job ${jobId}.`,
-      );
+      await createCancellationReviewActionItem({
+        jobId: job.id,
+        title: "Cancellation parts charge failed",
+        notes: `Could not charge installed parts ($${partsChargeAmount.toFixed(2)}) for job ${jobId}.`,
+        driver: job.fields.driver,
+        mechanic: job.fields.mechanic,
+      });
     }
   }
 

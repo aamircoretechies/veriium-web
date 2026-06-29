@@ -1,0 +1,90 @@
+import { getJobById } from "@/lib/jobs/lookup";
+import { getStripe } from "@/lib/stripe/client";
+import { STRIPE_CURRENCY } from "@/lib/stripe/constants";
+import { recoveryKey } from "@/lib/stripe/idempotency";
+import { DriverNotLinkedError, FinalPriceMissingError } from "./errors";
+import { createPaymentRecord, findPaymentByIdempotencyKey } from "./record";
+
+export type RecoveryPaymentLinkResult = {
+  url: string;
+  paymentRecordId: string;
+};
+
+/** Stripe Payment Link for final charge recovery after off-session failure (Exhibit A §4). */
+export async function createRecoveryPaymentLink(
+  jobId: string,
+): Promise<RecoveryPaymentLinkResult> {
+  const job = await getJobById(jobId);
+  const finalPrice = job.fields.final_price;
+
+  if (finalPrice === undefined || finalPrice <= 0) {
+    throw new FinalPriceMissingError(jobId);
+  }
+
+  const driverId = job.fields.driver?.[0];
+  if (!driverId) {
+    throw new DriverNotLinkedError(jobId);
+  }
+
+  const idempotencyKey = recoveryKey(jobId);
+  const existing = await findPaymentByIdempotencyKey(idempotencyKey);
+  if (existing) {
+    const stripe = getStripe();
+    const links = await stripe.paymentLinks.list({ limit: 100 });
+    const match = links.data.find(
+      (link) =>
+        link.metadata?.jobId === jobId &&
+        link.metadata?.paymentType === "final_recovery",
+    );
+    if (match?.url) {
+      return {
+        url: match.url,
+        paymentRecordId: existing.id,
+      };
+    }
+  }
+
+  const amountCents = Math.round(finalPrice * 100);
+  const stripe = getStripe();
+
+  const price = await stripe.prices.create(
+    {
+      currency: STRIPE_CURRENCY,
+      unit_amount: amountCents,
+      product_data: {
+        name: "Veriium repair payment",
+        metadata: { jobId },
+      },
+    },
+    { idempotencyKey: `${idempotencyKey}-price` },
+  );
+
+  const paymentLink = await stripe.paymentLinks.create(
+    {
+      line_items: [{ price: price.id, quantity: 1 }],
+      metadata: {
+        jobId,
+        paymentType: "final_recovery",
+      },
+    },
+    { idempotencyKey },
+  );
+
+  if (!paymentLink.url) {
+    throw new Error("Stripe Payment Link missing url");
+  }
+
+  const record = await createPaymentRecord({
+    type: "final_recovery",
+    amount: finalPrice,
+    status: "pending",
+    idempotency_key: idempotencyKey,
+    job: [jobId],
+    driver: [driverId],
+  });
+
+  return {
+    url: paymentLink.url,
+    paymentRecordId: record.id,
+  };
+}

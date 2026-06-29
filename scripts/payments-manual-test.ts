@@ -174,6 +174,7 @@ type MockStripeState = {
   prices: Map<string, Stripe.Price>;
   paymentLinks: Stripe.PaymentLink[];
   idempotency: Map<string, unknown>;
+  declineConfirmIntentIds: Set<string>;
   nextId: number;
 };
 
@@ -197,6 +198,7 @@ function createInMemoryStripeMock(): {
     prices: new Map(),
     paymentLinks: [],
     idempotency: new Map(),
+    declineConfirmIntentIds: new Set(),
     nextId: 0,
   };
 
@@ -345,6 +347,22 @@ function createInMemoryStripeMock(): {
         }
         return paymentIntent;
       },
+      confirm: async (id: string) => {
+        const paymentIntent = state.paymentIntents.get(id);
+        if (!paymentIntent) {
+          throw new Error(`PaymentIntent ${id} not found in mock`);
+        }
+        if (state.declineConfirmIntentIds.has(id)) {
+          throw new Error("Your card was declined.");
+        }
+        const confirmed = {
+          ...paymentIntent,
+          status: "succeeded",
+          latest_charge: nextMockId(state, "ch"),
+        } as unknown as Stripe.PaymentIntent;
+        state.paymentIntents.set(id, confirmed);
+        return confirmed;
+      },
     },
     paymentMethods: {
       list: async (params: Stripe.PaymentMethodListParams) => {
@@ -427,6 +445,7 @@ function createInMemoryStripeMock(): {
 async function main(): Promise<void> {
   loadEnvFile();
   process.env.MATCHING_MANUAL_TEST = "1";
+  process.env.PAYMENTS_MANUAL_TEST = "1";
 
   const useMock =
     process.env.PAYMENTS_MANUAL_TEST_MOCK === "1" || !(await probeAirtable());
@@ -464,6 +483,8 @@ async function main(): Promise<void> {
     diagnosticKey,
     cancelKey,
     tipKey,
+    recoveryKey,
+    paymentRetryKey,
   } = await import("@/lib/stripe/idempotency");
   const {
     DIAGNOSTIC_FEE_CENTS,
@@ -475,6 +496,12 @@ async function main(): Promise<void> {
   const { createCancellationFeeIntent } = await import("@/lib/payments/cancellation-fee");
   const { createFinalPaymentIntent } = await import("@/lib/payments/final-intent");
   const { createTipPaymentLink } = await import("@/lib/payments/tip-link");
+  const { createRecoveryPaymentLink } = await import("@/lib/payments/recovery-link");
+  const { schedulePaymentRetry } = await import("@/lib/payments/schedule-retry");
+  const { runPaymentRetry } = await import("@/lib/payments/retry-off-session");
+  const { handlePaymentIntentEvent } = await import(
+    "@/lib/payments/webhooks/payment-intent"
+  );
   const { findPaymentByIdempotencyKey } = await import("@/lib/payments/record");
   const { dispatchStripeWebhook } = await import("@/lib/payments/webhooks/dispatch");
   const { getJobById } = await import("@/lib/jobs/lookup");
@@ -566,13 +593,18 @@ async function main(): Promise<void> {
   console.log(`\n[payments-manual-test] run=${RUN_ID}\n`);
 
   console.log("Unit checks (no external APIs):");
-  await trackResult("idempotency keys: setup/final/diagnostic/cancel/tip", async () => {
+  await trackResult("idempotency keys: setup/final/diagnostic/cancel/tip/recovery", async () => {
     const jobId = "recJobTest";
     assert(setupKey(jobId) === `setup-${jobId}`, "setupKey");
     assert(finalKey(jobId) === jobId, "finalKey");
     assert(diagnosticKey(jobId) === `diagnostic-${jobId}`, "diagnosticKey");
     assert(cancelKey(jobId) === `cancel-${jobId}`, "cancelKey");
     assert(tipKey(jobId) === `tip-${jobId}`, "tipKey");
+    assert(recoveryKey(jobId) === `recovery-${jobId}`, "recoveryKey");
+    assert(
+      paymentRetryKey(diagnosticKey(jobId)) === `diagnostic-${jobId}-retry`,
+      "paymentRetryKey",
+    );
   });
 
   await trackResult("errors: JobNotPayableError for non-draft job", async () => {
@@ -832,6 +864,144 @@ async function main(): Promise<void> {
       throw new Error("expected JobNotPayableError");
     } catch (error) {
       assert(error instanceof JobNotPayableError, "JobNotPayableError");
+    }
+  });
+
+  console.log("\nM7 payment failure recovery:");
+
+  await trackResult("M7: final PI fail → payout_held + recovery link action item", async () => {
+    if (!stripeMock) {
+      throw new Error("M7 tests require in-memory Stripe mock");
+    }
+
+    const driverId = await seedDriver("07");
+    const jobId = await seedJob(driverId, {
+      status: "completed_pending_confirmation",
+      final_price: 249.5,
+      payout_held: true,
+    });
+
+    const piId = nextMockId(stripeMock.state, "pi");
+    const failedIntent = {
+      id: piId,
+      object: "payment_intent",
+      amount: 24950,
+      currency: "usd",
+      status: "requires_payment_method",
+      metadata: { jobId, paymentType: "final" },
+      last_payment_error: { message: "Your card was declined." },
+    } as unknown as Stripe.PaymentIntent;
+    stripeMock.state.paymentIntents.set(piId, failedIntent);
+
+    await client.createRecord("payments", {
+      type: "final",
+      amount: 249.5,
+      status: "pending",
+      idempotency_key: finalKey(jobId),
+      stripe_payment_intent_id: piId,
+      job: [jobId],
+      driver: [driverId],
+    });
+
+    await handlePaymentIntentEvent({
+      id: `evt_${RUN_ID}_final_fail`,
+      object: "event",
+      type: "payment_intent.payment_failed",
+      data: { object: failedIntent },
+    } as unknown as Stripe.Event);
+
+    const job = await getJobById(jobId);
+    assert(job.fields.payout_held === true, "payout_held");
+
+    const actionItems = await client.listRecords("action-items", {
+      filterByFormula: `AND({type} = 'payment_failed', FIND('${jobId}', ARRAYJOIN({job}, ',')))`,
+      maxRecords: 5,
+    });
+    assert(actionItems.records.length >= 1, "payment_failed action item");
+    const notes = String(actionItems.records[0]?.fields.notes ?? "");
+    assert(notes.includes("Recovery link:"), "recovery URL in notes");
+    for (const row of actionItems.records) {
+      if (!created.actionItems.includes(row.id)) {
+        created.actionItems.push(row.id);
+      }
+    }
+
+    const recovery = await createRecoveryPaymentLink(jobId);
+    const recovery2 = await createRecoveryPaymentLink(jobId);
+    assert(recovery.url === recovery2.url, "recovery link idempotent");
+    assert((await countPaymentsByKey(recoveryKey(jobId))) === 1, "one recovery row");
+  });
+
+  await trackResult("M7: diagnostic fail → schedule retry + worker runs once", async () => {
+    if (!stripeMock) {
+      throw new Error("M7 tests require in-memory Stripe mock");
+    }
+
+    const driverId = await seedDriver("08");
+    let jobId = await seedJob(driverId, { status: "draft" });
+    const { setupIntentId } = await createSetupIntentForJob(jobId);
+    const setupIntent = stripeMock.succeedSetupIntent(setupIntentId);
+    await completeSetup(setupIntent);
+    await client.updateRecord("jobs", jobId, { status: "cancelled" });
+
+    const piId = nextMockId(stripeMock.state, "pi");
+    const failedIntent = {
+      id: piId,
+      object: "payment_intent",
+      amount: DIAGNOSTIC_FEE_CENTS,
+      currency: "usd",
+      status: "requires_payment_method",
+      customer: setupIntent.customer,
+      metadata: { jobId, paymentType: "diagnostic_fee" },
+      last_payment_error: { message: "Your card was declined." },
+    } as unknown as Stripe.PaymentIntent;
+    stripeMock.state.paymentIntents.set(piId, failedIntent);
+    stripeMock.state.declineConfirmIntentIds.add(piId);
+
+    const paymentRecord = await client.createRecord("payments", {
+      type: "diagnostic_fee",
+      amount: DIAGNOSTIC_FEE_CENTS / 100,
+      status: "failed",
+      idempotency_key: diagnosticKey(jobId),
+      stripe_payment_intent_id: piId,
+      job: [jobId],
+      driver: [driverId],
+    });
+    created.payments.push(paymentRecord.id);
+
+    await handlePaymentIntentEvent({
+      id: `evt_${RUN_ID}_diag_fail_1`,
+      object: "event",
+      type: "payment_intent.payment_failed",
+      data: { object: failedIntent },
+    } as unknown as Stripe.Event);
+
+    let job = await getJobById(jobId);
+    assert(
+      Boolean(job.fields.payment_retry_qstash_id?.trim()),
+      "payment_retry_qstash_id scheduled",
+    );
+
+    const beforeRetry = job.fields.payment_retry_qstash_id;
+    await schedulePaymentRetry(jobId, "diagnostic_fee");
+    job = await getJobById(jobId);
+    assert(
+      job.fields.payment_retry_qstash_id === beforeRetry,
+      "retry schedule idempotent",
+    );
+
+    const retryResult = await runPaymentRetry(jobId, "diagnostic_fee");
+    assert(retryResult.action === "escalated", "retry escalated on decline");
+
+    const escalations = await client.listRecords("action-items", {
+      filterByFormula: `AND({type} = 'payment_failed', FIND('${jobId}', ARRAYJOIN({job}, ',')))`,
+      maxRecords: 5,
+    });
+    assert(escalations.records.length >= 1, "diagnostic retry failed action item");
+    for (const row of escalations.records) {
+      if (!created.actionItems.includes(row.id)) {
+        created.actionItems.push(row.id);
+      }
     }
   });
 

@@ -23,6 +23,16 @@ export function tipKey(jobId: string): string {
   return `tip-${jobId}`;
 }
 
+/** Final payment recovery Payment Link — Exhibit A §4 (INFERRED). */
+export function recoveryKey(jobId: string): string {
+  return `recovery-${jobId}`;
+}
+
+/** Suffix for a second off-session charge attempt when the original PI is terminal. */
+export function paymentRetryKey(baseKey: string): string {
+  return `${baseKey}-retry`;
+}
+
 /** Installed parts charge on requote decline — §5.5. */
 export function installedPartsKey(jobId: string): string {
   return `installed-${jobId}`;

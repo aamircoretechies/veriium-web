@@ -162,6 +162,8 @@ export const updateJobSchema = z
     parts_reimbursement_forfeited: z.boolean().optional(),
     cancellation_policy_accepted_at: z.string().datetime().optional(),
     payment_setup_at: z.string().datetime().optional(),
+    payout_held: z.boolean().optional(),
+    payment_retry_qstash_id: z.string().optional(),
     matched_at: z.string().datetime().optional(),
     accepted_at: z.string().datetime().optional(),
     en_route_at: z.string().datetime().optional(),
@@ -226,6 +228,7 @@ export const updatePaymentSchema = z
   .object({
     status: paymentStatusSchema.optional(),
     amount: z.number().nonnegative().optional(),
+    idempotency_key: z.string().min(1).optional(),
     stripe_customer_id: z.string().min(1).optional(),
     stripe_setup_intent_id: z.string().min(1).optional(),
     stripe_payment_intent_id: z.string().min(1).optional(),

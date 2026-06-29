@@ -1,8 +1,14 @@
 import type Stripe from "stripe";
 
-import { getAirtableClient } from "@/lib/airtable";
+import {
+  createCancellationReviewActionItem,
+  createDiagnosticFeeRetryFailedActionItem,
+  createPaymentFailedActionItem,
+} from "@/lib/action-items/create";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { createRecoveryPaymentLink } from "@/lib/payments/recovery-link";
+import { schedulePaymentRetry } from "@/lib/payments/schedule-retry";
 import {
   createPaymentRecord,
   findPaymentByIdempotencyKey,
@@ -21,16 +27,18 @@ import {
   finalKey,
   installedPartsKey,
   partsCancelKey,
+  paymentRetryKey,
+  recoveryKey,
   tipKey,
 } from "@/lib/stripe/idempotency";
-import type { ActionItemFields } from "@/types/airtable/action-items";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { PaymentStatus, PaymentType } from "@/types/airtable/enums";
 import type { PaymentFields } from "@/types/airtable/payments";
-import { createActionItemSchema } from "@/types/airtable/schemas";
+import type { PaymentRetryPayload } from "@/types/api/service";
 
 const PAYMENT_TYPE_VALUES = new Set<string>([
   "final",
+  "final_recovery",
   "cancellation_fee",
   "diagnostic_fee",
   "installed_parts",
@@ -48,14 +56,103 @@ export async function handlePaymentIntentEvent(event: Stripe.Event): Promise<voi
     const paymentType = paymentIntent.metadata?.paymentType;
     const jobId = paymentIntent.metadata?.jobId;
     if (jobId && paymentType) {
+      if (paymentType === "final" || paymentType === "final_recovery") {
+        await updateJobStatus(jobId, { payout_held: false });
+      }
       await applyPayoutForPaymentType(jobId, paymentType);
     }
     return;
   }
 
   if (event.type === "payment_intent.payment_failed") {
-    await createPaymentFailedActionItem(paymentIntent, payment);
+    await handlePaymentFailed(paymentIntent, payment);
   }
+}
+
+async function handlePaymentFailed(
+  paymentIntent: Stripe.PaymentIntent,
+  payment: AirtableRecord<PaymentFields>,
+): Promise<void> {
+  const jobId = paymentIntent.metadata?.jobId ?? payment.fields.job?.[0];
+  const paymentType =
+    paymentIntent.metadata?.paymentType ?? payment.fields.type;
+  const driverId = payment.fields.driver?.[0];
+  const errorMessage =
+    paymentIntent.last_payment_error?.message ?? "Payment failed";
+
+  if (!jobId) {
+    return;
+  }
+
+  if (paymentType === "final") {
+    await updateJobStatus(jobId, { payout_held: true });
+
+    let recoveryUrl: string | undefined;
+    try {
+      const recovery = await createRecoveryPaymentLink(jobId);
+      recoveryUrl = recovery.url;
+    } catch (error) {
+      console.error(
+        `[payments/webhooks/payment-intent] Recovery link failed for job ${jobId}:`,
+        error,
+      );
+    }
+
+    const notes = [
+      `PaymentIntent ${paymentIntent.id} (${paymentType}): ${errorMessage}`,
+      recoveryUrl ? `Recovery link: ${recoveryUrl}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    await createPaymentFailedActionItem({
+      jobId,
+      notes,
+      ...(driverId ? { driver: [driverId] } : {}),
+    });
+    return;
+  }
+
+  if (
+    paymentType === "diagnostic_fee" ||
+    paymentType === "cancellation_fee"
+  ) {
+    const idempotencyKey = payment.fields.idempotency_key;
+    const isRetryAttempt = idempotencyKey.endsWith("-retry");
+
+    if (!isRetryAttempt) {
+      await schedulePaymentRetry(
+        jobId,
+        paymentType as PaymentRetryPayload["paymentType"],
+      );
+      return;
+    }
+
+    if (paymentType === "cancellation_fee") {
+      const job = await getJobById(jobId);
+      await createCancellationReviewActionItem({
+        jobId,
+        title: "Cancellation fee retry failed",
+        notes: `PaymentIntent ${paymentIntent.id} (${paymentType}): ${errorMessage}`,
+        driver: job.fields.driver,
+        mechanic: job.fields.mechanic,
+      });
+      return;
+    }
+
+    await createDiagnosticFeeRetryFailedActionItem({
+      jobId,
+      notes: `PaymentIntent ${paymentIntent.id} (${paymentType}): ${errorMessage}`,
+      ...(driverId ? { driver: [driverId] } : {}),
+    });
+    return;
+  }
+
+  await createPaymentFailedActionItem({
+    jobId,
+    notes: `PaymentIntent ${paymentIntent.id} (${paymentType}): ${errorMessage}`,
+    ...(driverId ? { driver: [driverId] } : {}),
+  });
 }
 
 function statusFromWebhookEvent(
@@ -99,6 +196,8 @@ function idempotencyKeyForType(jobId: string, paymentType: string): string | nul
   switch (paymentType) {
     case "final":
       return finalKey(jobId);
+    case "final_recovery":
+      return recoveryKey(jobId);
     case "diagnostic_fee":
       return diagnosticKey(jobId);
     case "cancellation_fee":
@@ -138,6 +237,16 @@ async function upsertPaymentFromIntent(
     const idempotencyKey = idempotencyKeyForType(jobId, paymentType);
     if (idempotencyKey) {
       payment = await findPaymentByIdempotencyKey(idempotencyKey);
+    }
+    if (!payment && paymentType === "diagnostic_fee") {
+      payment = await findPaymentByIdempotencyKey(
+        paymentRetryKey(diagnosticKey(jobId)),
+      );
+    }
+    if (!payment && paymentType === "cancellation_fee") {
+      payment = await findPaymentByIdempotencyKey(
+        paymentRetryKey(cancelKey(jobId)),
+      );
     }
   }
 
@@ -210,29 +319,4 @@ async function applyPayoutForPaymentType(
       });
       break;
   }
-}
-
-async function createPaymentFailedActionItem(
-  paymentIntent: Stripe.PaymentIntent,
-  payment: AirtableRecord<PaymentFields>,
-): Promise<void> {
-  const jobId = paymentIntent.metadata?.jobId ?? payment.fields.job?.[0];
-  const driverId = payment.fields.driver?.[0];
-  const paymentType = paymentIntent.metadata?.paymentType ?? payment.fields.type;
-  const errorMessage =
-    paymentIntent.last_payment_error?.message ?? "Payment failed";
-
-  const actionItemFields = createActionItemSchema.parse({
-    type: "payment_failed",
-    status: "open",
-    title: "Payment failed",
-    notes: `PaymentIntent ${paymentIntent.id} (${paymentType}): ${errorMessage}`,
-    ...(jobId ? { job: [jobId] } : {}),
-    ...(driverId ? { driver: [driverId] } : {}),
-  });
-
-  const client = getAirtableClient();
-  await client.createRecord<ActionItemFields>("action-items", actionItemFields, {
-    typecast: true,
-  });
 }

@@ -94,6 +94,7 @@ export async function handleDone(
 
   const updated = await updateJobStatus(jobId, {
     status: "completed_pending_confirmation",
+    payout_held: true,
   });
 
   await notifyDriverDone(

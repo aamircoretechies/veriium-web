@@ -101,6 +101,7 @@ export type ServiceType = (typeof SERVICE_TYPES)[number];
 export const PAYMENT_TYPES = [
   "setup",
   "final",
+  "final_recovery",
   "cancellation_fee",
   "diagnostic_fee",
   "tip",

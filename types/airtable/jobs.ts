@@ -64,6 +64,10 @@ export type JobFields = {
   cancellation_policy_accepted_at?: AirtableDateTime;
   payment_setup_at?: AirtableDateTime;
 
+  // Payment failure recovery (Exhibit A §4, §5.11 — field names INFERRED)
+  payout_held?: boolean;
+  payment_retry_qstash_id?: string;
+
   // Lifecycle timestamps
   matched_at?: AirtableDateTime;
   accepted_at?: AirtableDateTime;
