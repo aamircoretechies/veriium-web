@@ -14,6 +14,7 @@ import {
 import { markMechanicAvailable } from "@/lib/matching/mechanic-update";
 import { getMechanicById } from "@/lib/mechanics/lookup";
 import { createCancellationFeeIntent } from "@/lib/payments/cancellation-fee";
+import { createPartsCancellationIntent } from "@/lib/payments/parts-cancellation";
 import { sendSms } from "@/lib/twilio/sms";
 import {
   cancellationDriver,
@@ -21,14 +22,22 @@ import {
 } from "@/lib/twilio/templates";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 import type { JobStatus } from "@/types/airtable/enums";
+import type { JobFields } from "@/types/airtable/jobs";
+import type { AirtableRecord } from "@/types/airtable/common";
 import { createActionItemSchema } from "@/types/airtable/schemas";
 import { isLateCancellation } from "./fee-window";
+import {
+  resolvePartsCancelAmount,
+  shouldChargePartsOnCancel,
+} from "./parts-charge";
 
 export type CancelJobResult = {
   jobId: string;
   status: string;
   action: "cancelled";
   feeCharged: boolean;
+  partsCharged: boolean;
+  partsChargeAmount?: number;
 };
 
 export class JobNotCancellableError extends Error {
@@ -73,9 +82,32 @@ function assertJobCancellable(jobId: string, status: JobStatus): void {
   }
 }
 
+async function createCancellationReviewActionItem(
+  job: AirtableRecord<JobFields>,
+  title: string,
+  notes: string,
+): Promise<void> {
+  const actionItemFields = createActionItemSchema.parse({
+    type: "cancellation_review",
+    status: "open",
+    title,
+    notes,
+    job: [job.id],
+    driver: job.fields.driver,
+    mechanic: job.fields.mechanic,
+  });
+
+  const client = getAirtableClient();
+  await client.createRecord<ActionItemFields>("action-items", actionItemFields, {
+    typecast: true,
+  });
+}
+
 async function notifyCancellationParties(
   jobId: string,
   feeCharged: boolean,
+  partsCharged: boolean,
+  partsChargeAmount: number,
 ): Promise<void> {
   const job = await getJobById(jobId);
 
@@ -84,7 +116,13 @@ async function notifyCancellationParties(
     try {
       const driver = await getDriverById(driverId);
       if (driver.fields.phone) {
-        await sendSms(driver.fields.phone, cancellationDriver(feeCharged));
+        await sendSms(
+          driver.fields.phone,
+          cancellationDriver({
+            feeCharged,
+            partsCharge: partsCharged ? partsChargeAmount : 0,
+          }),
+        );
       }
     } catch (error) {
       console.error(
@@ -99,7 +137,10 @@ async function notifyCancellationParties(
     try {
       const mechanic = await getMechanicById(mechanicId);
       if (mechanic.fields.phone) {
-        await sendSms(mechanic.fields.phone, cancellationMechanic());
+        await sendSms(
+          mechanic.fields.phone,
+          cancellationMechanic(partsCharged),
+        );
       }
     } catch (error) {
       console.error(
@@ -111,7 +152,8 @@ async function notifyCancellationParties(
 }
 
 /**
- * Cancel a job, charging the $50 late-cancel fee when inside the free window (§9.1).
+ * Cancel a job, charging the $50 late-cancel fee when inside the fee window (§9.1)
+ * and installed parts when quote was approved with a valid receipt (Exhibit A §5.6).
  */
 export async function cancelJob(jobId: string): Promise<CancelJobResult> {
   const job = await getJobById(jobId);
@@ -119,6 +161,8 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
 
   const lateCancel = isLateCancellation(job.fields.appointment_window_start);
   let feeCharged = false;
+  let partsCharged = false;
+  let partsChargeAmount = 0;
 
   if (lateCancel) {
     try {
@@ -130,26 +174,46 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
         error,
       );
 
-      const actionItemFields = createActionItemSchema.parse({
-        type: "cancellation_review",
-        status: "open",
-        title: "Late cancellation fee failed",
-        notes: `Could not charge cancellation fee for job ${jobId}.`,
-        job: [jobId],
-        driver: job.fields.driver,
-        mechanic: job.fields.mechanic,
-      });
+      await createCancellationReviewActionItem(
+        job,
+        "Late cancellation fee failed",
+        `Could not charge cancellation fee for job ${jobId}.`,
+      );
+    }
+  }
 
-      const client = getAirtableClient();
-      await client.createRecord<ActionItemFields>("action-items", actionItemFields, {
-        typecast: true,
-      });
+  if (shouldChargePartsOnCancel(job.fields)) {
+    partsChargeAmount = resolvePartsCancelAmount(job.fields);
+    try {
+      const result = await createPartsCancellationIntent(
+        jobId,
+        partsChargeAmount,
+      );
+      if (result) {
+        partsCharged = true;
+      }
+    } catch (error) {
+      console.error(
+        `[cancellation/cancel-job] Parts cancellation charge failed for job ${jobId}:`,
+        error,
+      );
+
+      await createCancellationReviewActionItem(
+        job,
+        "Cancellation parts charge failed",
+        `Could not charge installed parts ($${partsChargeAmount.toFixed(2)}) for job ${jobId}.`,
+      );
     }
   }
 
   const updated = await updateJobStatus(jobId, { status: "cancelled" });
 
-  await notifyCancellationParties(jobId, feeCharged);
+  await notifyCancellationParties(
+    jobId,
+    feeCharged,
+    partsCharged,
+    partsChargeAmount,
+  );
 
   const mechanicId = job.fields.mechanic?.[0];
   if (mechanicId) {
@@ -161,5 +225,7 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
     status: updated.fields.status,
     action: "cancelled",
     feeCharged,
+    partsCharged,
+    ...(partsCharged ? { partsChargeAmount } : {}),
   };
 }

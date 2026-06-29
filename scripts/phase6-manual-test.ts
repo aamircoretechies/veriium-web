@@ -415,7 +415,7 @@ async function main(): Promise<void> {
   const { createSetupIntentForJob } = await import("@/lib/payments/setup-intent");
   const { completeSetup } = await import("@/lib/payments/complete-setup");
   const { findPaymentByIdempotencyKey } = await import("@/lib/payments/record");
-  const { cancelKey, diagnosticKey, finalKey } = await import(
+  const { cancelKey, diagnosticKey, finalKey, partsCancelKey } = await import(
     "@/lib/stripe/idempotency"
   );
   const { CANCELLATION_FEE_CENTS } = await import("@/lib/stripe/constants");
@@ -740,6 +740,114 @@ async function main(): Promise<void> {
       "amount $50",
     );
   });
+
+  console.log("\n4b. Late cancel after parts purchase:");
+  await trackResult(
+    "approve + receipt → cancel within 24h → $50 fee + parts PI",
+    async () => {
+      const { submitReceipt } = await import("@/lib/receipts/submit");
+
+      await resetMechanicAvailable(sharedMechanicId);
+      const driverId = await seedDriver("04b");
+      const mechanicId = await seedMechanic("04b");
+      const jobId = await prepareAcceptedJob(driverId, mechanicId);
+      const receiptTotal = 82.5;
+
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ENROUTE"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ARRIVED"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("DIAGNOSING"));
+      await handleServiceCommand(
+        jobId,
+        mechanicId,
+        parseSmsCommand("QUOTE $245 PARTS $80"),
+      );
+
+      const jobBeforeApprove = await getJobById(jobId);
+      await handleDriverInbound(
+        jobBeforeApprove,
+        parseSmsCommand("APPROVE"),
+      );
+
+      await submitReceipt({
+        jobId,
+        mechanicId,
+        receiptUrl: "https://res.cloudinary.com/veriium-test/receipt.jpg",
+        source: "web",
+      });
+
+      await client.updateRecord("jobs", jobId, {
+        receipt_total: receiptTotal,
+        appointment_window_start: hoursFromNow(2),
+      });
+
+      const result = await cancelJob(jobId);
+      assert(result.feeCharged === true, "fee charged");
+      assert(result.partsCharged === true, "parts charged");
+      assert(result.partsChargeAmount === receiptTotal, "parts amount");
+      assert(result.status === "cancelled", "cancelled");
+
+      const feePayment = await findPaymentByIdempotencyKey(cancelKey(jobId));
+      assert(feePayment?.fields.type === "cancellation_fee", "cancellation_fee");
+      assert(
+        feePayment?.fields.amount === CANCELLATION_FEE_CENTS / 100,
+        "fee amount $50",
+      );
+
+      const partsPayment = await findPaymentByIdempotencyKey(
+        partsCancelKey(jobId),
+      );
+      assert(partsPayment?.fields.type === "parts_cancellation", "parts_cancellation");
+      assert(partsPayment?.fields.amount === receiptTotal, "parts amount");
+      assert((await countPaymentsByKey(partsCancelKey(jobId))) === 1, "one parts PI");
+    },
+  );
+
+  await trackResult(
+    "+48h appointment + receipt → cancel, parts only (no fee)",
+    async () => {
+      const { submitReceipt } = await import("@/lib/receipts/submit");
+
+      await resetMechanicAvailable(sharedMechanicId);
+      const driverId = await seedDriver("04c");
+      const mechanicId = await seedMechanic("04c");
+      const jobId = await prepareAcceptedJob(driverId, mechanicId);
+      const receiptTotal = 65;
+
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ENROUTE"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ARRIVED"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("DIAGNOSING"));
+      await handleServiceCommand(
+        jobId,
+        mechanicId,
+        parseSmsCommand("QUOTE $200 PARTS $60"),
+      );
+
+      const jobBeforeApprove = await getJobById(jobId);
+      await handleDriverInbound(
+        jobBeforeApprove,
+        parseSmsCommand("APPROVE"),
+      );
+
+      await submitReceipt({
+        jobId,
+        mechanicId,
+        receiptUrl: "https://res.cloudinary.com/veriium-test/receipt-early.jpg",
+        source: "web",
+      });
+
+      await client.updateRecord("jobs", jobId, {
+        receipt_total: receiptTotal,
+        appointment_window_start: hoursFromNow(48),
+      });
+
+      const result = await cancelJob(jobId);
+      assert(result.feeCharged === false, "no fee");
+      assert(result.partsCharged === true, "parts charged");
+      assert(result.partsChargeAmount === receiptTotal, "parts amount");
+      assert((await countPaymentsByKey(cancelKey(jobId))) === 0, "no cancel PI");
+      assert((await countPaymentsByKey(partsCancelKey(jobId))) === 1, "parts PI");
+    },
+  );
 
   console.log("\n5. No-show:");
   await trackResult(

@@ -27,3 +27,8 @@ export function tipKey(jobId: string): string {
 export function installedPartsKey(jobId: string): string {
   return `installed-${jobId}`;
 }
+
+/** Parts charge on post-approve cancellation — Exhibit A §5.6. */
+export function partsCancelKey(jobId: string): string {
+  return `parts-cancel-${jobId}`;
+}

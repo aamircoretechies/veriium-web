@@ -104,6 +104,7 @@ export const PAYMENT_TYPES = [
   "diagnostic_fee",
   "tip",
   "installed_parts",
+  "parts_cancellation",
 ] as const;
 
 export type PaymentType = (typeof PAYMENT_TYPES)[number];

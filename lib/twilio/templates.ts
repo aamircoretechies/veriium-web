@@ -191,17 +191,37 @@ export function serviceDoneDriver(
   return `${message} Reply 2 to confirm and complete payment, or 1 to dispute.`;
 }
 
-/** §9.1 — Driver confirmation after cancellation. */
-export function cancellationDriver(feeCharged: boolean): string {
+/** §9.1 / Exhibit A §5.6 — Driver confirmation after cancellation. */
+type CancellationDriverDetails = {
+  feeCharged: boolean;
+  partsCharge: number;
+};
+
+export function cancellationDriver(details: CancellationDriverDetails): string {
+  const { feeCharged, partsCharge } = details;
+  const hasParts = partsCharge > 0;
+
+  if (feeCharged && hasParts) {
+    return `Veriium: Your job has been cancelled. A $50 cancellation fee and $${partsCharge.toFixed(2)} for installed parts have been charged per our policy.`;
+  }
+
   if (feeCharged) {
     return "Veriium: Your job has been cancelled. A $50 cancellation fee has been charged per our policy.";
+  }
+
+  if (hasParts) {
+    return `Veriium: Your job has been cancelled. $${partsCharge.toFixed(2)} for installed parts has been charged. No cancellation fee applies.`;
   }
 
   return "Veriium: Your job has been cancelled. No cancellation fee applies.";
 }
 
-/** §9.1 — Mechanic alert when the driver cancels. */
-export function cancellationMechanic(): string {
+/** §9.1 / Exhibit A §5.6 — Mechanic alert when the driver cancels. */
+export function cancellationMechanic(partsCharged: boolean): string {
+  if (partsCharged) {
+    return "Veriium: The customer cancelled this job. Installed parts have been charged to the customer — you may keep the parts. You're back on the available list and can accept new jobs.";
+  }
+
   return "Veriium: The customer cancelled this job. You're back on the available list and can accept new jobs.";
 }
 

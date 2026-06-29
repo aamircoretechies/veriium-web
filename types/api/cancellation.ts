@@ -11,6 +11,8 @@ export const cancelJobResponseSchema = z.object({
   status: z.string().min(1),
   action: z.literal("cancelled"),
   feeCharged: z.boolean(),
+  partsCharged: z.boolean(),
+  partsChargeAmount: z.number().nonnegative().optional(),
 });
 
 export type CancelJobRequest = z.infer<typeof cancelJobRequestSchema>;
