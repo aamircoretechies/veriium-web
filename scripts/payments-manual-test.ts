@@ -50,6 +50,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type Stripe from "stripe";
+import type { ActionItemFields } from "@/types/airtable/action-items";
 
 const RUN_ID = Date.now().toString(36);
 const TEST_ZIP = "30043";
@@ -913,7 +914,7 @@ async function main(): Promise<void> {
     const job = await getJobById(jobId);
     assert(job.fields.payout_held === true, "payout_held");
 
-    const actionItems = await client.listRecords("action-items", {
+    const actionItems = await client.listRecords<ActionItemFields>("action-items", {
       filterByFormula: `AND({type} = 'payment_failed', FIND('${jobId}', ARRAYJOIN({job}, ',')))`,
       maxRecords: 5,
     });
