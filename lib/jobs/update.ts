@@ -23,6 +23,7 @@ const STATUS_TIMESTAMP_FIELDS = {
   arrived: "arrived_at",
   vehicle_received: "vehicle_received_at",
   diagnosing: "diagnosing_at",
+  quote_pending_admin: "quote_pending_admin_at",
   quote_submitted: "quote_submitted_at",
   quote_approved: "quote_approved_at",
   quote_declined: "quote_declined_at",

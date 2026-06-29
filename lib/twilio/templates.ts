@@ -117,6 +117,11 @@ export function serviceQuoteDriver(details: ServiceQuoteDetails): string {
   return `Veriium: Your quote is ready — labor $${details.quoteAmount.toFixed(2)}, parts $${details.partsCost.toFixed(2)} (total $${total.toFixed(2)}).${onHandNote} Reply APPROVE to accept or DECLINE to cancel.`;
 }
 
+/** Exhibit A §3.4 — driver notification after quote decline or 2h timeout. */
+export function serviceQuoteDeclinedDriver(): string {
+  return "Veriium: You declined the repair quote (or did not respond within 2 hours). A $35 diagnostic fee has been charged to your card on file.";
+}
+
 /** §7.2 — Driver parts ETA update. */
 export function servicePartsEta(minutes: number): string {
   return `Veriium: Your mechanic expects parts to arrive in about ${minutes} minutes.`;

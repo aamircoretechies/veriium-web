@@ -11,7 +11,8 @@
     "mechanic-search:manual-test": "npx tsx scripts/mechanic-search-manual-test.ts",
     "payments:manual-test": "npx tsx scripts/payments-manual-test.ts",
     "phase6:manual-test": "npx tsx scripts/phase6-manual-test.ts",
-    "receipt:manual-test": "npx tsx scripts/receipt-manual-test.ts"
+    "receipt:manual-test": "npx tsx scripts/receipt-manual-test.ts",
+    "quote:manual-test": "npx tsx scripts/quote-manual-test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

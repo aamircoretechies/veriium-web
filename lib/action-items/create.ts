@@ -31,3 +31,35 @@ export async function createAwaitingAdminMatchActionItem(
 
   return record.id;
 }
+
+export type CreatePartsFlaggedActionItemInput = {
+  jobId: string;
+  quoteAmount: number;
+  partsCost: number;
+  mechanic?: AirtableLinkedRecords;
+  driver?: AirtableLinkedRecords;
+};
+
+/** Create an admin alert when parts cost exceeds the pre-approval threshold (Exhibit A §6). */
+export async function createPartsFlaggedActionItem(
+  input: CreatePartsFlaggedActionItemInput,
+): Promise<string> {
+  const actionItemFields = createActionItemSchema.parse({
+    type: "parts_flagged",
+    status: "open",
+    title: "Parts quote flagged for admin review",
+    notes: `Job ${input.jobId}: parts $${input.partsCost.toFixed(2)} exceed $500 threshold (labor $${input.quoteAmount.toFixed(2)}). Approve in Airtable to release quote to driver.`,
+    job: [input.jobId],
+    mechanic: input.mechanic,
+    driver: input.driver,
+  });
+
+  const client = getAirtableClient();
+  const record = await client.createRecord<ActionItemFields>(
+    "action-items",
+    actionItemFields,
+    { typecast: true },
+  );
+
+  return record.id;
+}

@@ -41,6 +41,7 @@ export const JOB_STATUSES = [
   "vehicle_received",
   "arrived",
   "diagnosing",
+  "quote_pending_admin",
   "quote_submitted",
   "quote_approved",
   "quote_declined",
@@ -135,6 +136,7 @@ export const ACTION_ITEM_TYPES = [
   "cancellation_review",
   "receipt_overdue",
   "receipt_review",
+  "parts_flagged",
 ] as const;
 
 export type ActionItemType = (typeof ACTION_ITEM_TYPES)[number];

@@ -26,3 +26,9 @@ export const receiptCheckPayloadSchema = z.object({
 });
 
 export type ReceiptCheckPayload = z.infer<typeof receiptCheckPayloadSchema>;
+
+export const quoteTimeoutPayloadSchema = z.object({
+  jobId: z.string().min(1),
+});
+
+export type QuoteTimeoutPayload = z.infer<typeof quoteTimeoutPayloadSchema>;

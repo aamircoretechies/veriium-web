@@ -39,6 +39,9 @@ export type JobFields = {
   platform_fee?: number;
   on_hand?: boolean;
 
+  // Quote hardening (Exhibit A §3.4 — quote_timeout_qstash_id INFERRED)
+  quote_timeout_qstash_id?: string;
+
   // Parts receipt (Exhibit A §5.3)
   receipt_url?: string;
   receipt_status?: ReceiptStatus;
@@ -56,6 +59,7 @@ export type JobFields = {
   arrived_at?: AirtableDateTime;
   vehicle_received_at?: AirtableDateTime;
   diagnosing_at?: AirtableDateTime;
+  quote_pending_admin_at?: AirtableDateTime;
   quote_submitted_at?: AirtableDateTime;
   quote_approved_at?: AirtableDateTime;
   quote_declined_at?: AirtableDateTime;

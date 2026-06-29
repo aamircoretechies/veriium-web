@@ -1,6 +1,10 @@
+import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { createDiagnosticFeeIntent } from "@/lib/payments/diagnostic-fee";
+import { cancelQuoteTimeout } from "@/lib/quotes/schedule";
+import { sendSms } from "@/lib/twilio/sms";
+import { serviceQuoteDeclinedDriver } from "@/lib/twilio/templates";
 import type { JobStatus } from "@/types/airtable/enums";
 
 export class InvalidDriverQuoteResponseError extends Error {
@@ -23,6 +27,24 @@ export type DriverQuoteResponseResult = {
   action: "quote_approved" | "in_progress" | "cancelled";
 };
 
+async function notifyDriverQuoteDeclined(jobId: string): Promise<void> {
+  const job = await getJobById(jobId);
+  const driverId = job.fields.driver?.[0];
+  if (!driverId) {
+    return;
+  }
+
+  try {
+    const driver = await getDriverById(driverId);
+    await sendSms(driver.fields.phone, serviceQuoteDeclinedDriver());
+  } catch (error) {
+    console.error(
+      `[service/quote-response] Failed to notify driver of decline for job ${jobId}:`,
+      error,
+    );
+  }
+}
+
 /** APPROVE → `quote_approved`; auto-start `in_progress` when parts are on hand (§7.2). */
 export async function approveQuote(
   jobId: string,
@@ -32,6 +54,8 @@ export async function approveQuote(
   if (job.fields.status !== "quote_submitted") {
     throw new InvalidDriverQuoteResponseError("APPROVE", job.fields.status);
   }
+
+  await cancelQuoteTimeout(jobId);
 
   await updateJobStatus(jobId, { status: "quote_approved" });
 
@@ -62,9 +86,12 @@ export async function declineQuote(
     throw new InvalidDriverQuoteResponseError("DECLINE", job.fields.status);
   }
 
+  await cancelQuoteTimeout(jobId);
   await createDiagnosticFeeIntent(jobId);
   await updateJobStatus(jobId, { status: "quote_declined" });
   const updated = await updateJobStatus(jobId, { status: "cancelled" });
+
+  await notifyDriverQuoteDeclined(jobId);
 
   return {
     jobId,

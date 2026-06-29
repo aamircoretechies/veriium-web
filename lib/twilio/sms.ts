@@ -16,13 +16,21 @@ export async function sendSms(
   to: string,
   body: string,
 ): Promise<SendSmsResult> {
-  if (process.env.MATCHING_MANUAL_TEST === "1") {
-    return {
+  if (
+    process.env.MATCHING_MANUAL_TEST === "1" ||
+    process.env.QUOTE_MANUAL_TEST === "1"
+  ) {
+    const result = {
       sid: `SMmock${Date.now()}`,
       status: "queued",
       to,
       body,
     };
+    const log = (
+      globalThis as { __manualTestSmsLog?: SendSmsResult[] }
+    ).__manualTestSmsLog;
+    log?.push(result);
+    return result;
   }
 
   const env = getEnv();

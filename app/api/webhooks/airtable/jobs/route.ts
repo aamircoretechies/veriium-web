@@ -9,6 +9,10 @@ import {
   InvalidNoShowApprovalError,
   approveNoShow,
 } from "@/lib/no-show/approve";
+import {
+  InvalidQuotePartsApprovalError,
+  approveQuoteParts,
+} from "@/lib/quotes/approve-parts";
 import { airtableJobWebhookSchema } from "@/types/api/airtable-job-webhook";
 
 const WEBHOOK_SECRET_HEADER = "x-airtable-webhook-secret";
@@ -45,7 +49,9 @@ export async function POST(request: Request) {
         ? await approveNoShow(recordId)
         : action === "dispute_refund"
           ? await refundJob(recordId)
-          : await confirmJob(recordId);
+          : action === "quote_parts_approved"
+            ? await approveQuoteParts(recordId)
+            : await confirmJob(recordId);
 
     return jsonOk(result);
   } catch (error) {
@@ -55,7 +61,8 @@ export async function POST(request: Request) {
     if (
       error instanceof InvalidNoShowApprovalError ||
       error instanceof InvalidJobRefundError ||
-      error instanceof InvalidDriverConfirmError
+      error instanceof InvalidDriverConfirmError ||
+      error instanceof InvalidQuotePartsApprovalError
     ) {
       return jsonError(409, "invalid_job_state", error.message);
     }

@@ -16,6 +16,7 @@ Migration notes:
 | Payments (Phase 5) | `npm run payments:manual-test` | SetupIntent, PI helpers, idempotency (in-memory by default) |
 | Edge cases (Phase 6) | `npm run phase6:manual-test` | Service SMS, cancel/no-show/dispute/stale (in-memory by default) |
 | Receipt capture (M2) | `npm run receipt:manual-test` | Parts receipt upload, 24h deadline, MMS branch (in-memory by default) |
+| Quote hardening (M3) | `npm run quote:manual-test` | $500 parts pre-approval, 2h auto-decline, $35 decline SMS (in-memory by default) |
 
 For Stripe browser + webhook testing, see the **Stripe CLI end-to-end** section in `scripts/payments-manual-test.ts` (requires `stripe listen --forward-to localhost:3000/api/webhooks/stripe` and test keys in `.env.local`).
 
