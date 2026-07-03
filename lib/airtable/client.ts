@@ -5,7 +5,23 @@ import type {
   AirtableRecord,
 } from "@/types/airtable/common";
 import type { AirtableTable } from "@/types/airtable/tables";
+import { createInMemoryAirtableClient } from "./mock-client";
 import { getTableId } from "./tables";
+
+function shouldUseInMemoryAirtable(): boolean {
+  if (process.env.AIRTABLE_MOCK === "1") {
+    return true;
+  }
+  if (process.env.AIRTABLE_MOCK === "0") {
+    return false;
+  }
+
+  const apiKey = process.env.AIRTABLE_API_KEY ?? "";
+  const baseId = process.env.AIRTABLE_BASE_ID ?? "";
+  return (
+    apiKey.includes("Phase0ManualTest") || baseId.includes("Phase0ManualTest")
+  );
+}
 
 const AIRTABLE_API_BASE = "https://api.airtable.com/v0";
 
@@ -222,6 +238,7 @@ function createClient(): AirtableClient {
 }
 
 let cachedClient: AirtableClient | undefined;
+let cachedMockClient: AirtableClient | undefined;
 let testClientOverride: AirtableClient | undefined;
 
 /** Replace the singleton client (matching manual tests). Pass `undefined` to reset. */
@@ -234,6 +251,12 @@ export function setAirtableClientForTests(client: AirtableClient | undefined): v
 export function getAirtableClient(): AirtableClient {
   if (testClientOverride) {
     return testClientOverride;
+  }
+  if (shouldUseInMemoryAirtable()) {
+    if (!cachedMockClient) {
+      cachedMockClient = createInMemoryAirtableClient();
+    }
+    return cachedMockClient;
   }
   if (!cachedClient) {
     cachedClient = createClient();
