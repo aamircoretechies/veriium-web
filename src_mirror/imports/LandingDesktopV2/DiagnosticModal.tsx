@@ -113,7 +113,7 @@ export default function DiagnosticModal({
         return "Please enter a valid vehicle year.";
       }
     }
-    if (!smsConsent) return "Please agree to receive request-related SMS texts.";
+    if (!smsConsent) return "Please agree to receive request related SMS texts.";
     if (!phoneConsent) {
       return "Please acknowledge that providing your phone number creates a Veriium account.";
     }
@@ -163,11 +163,11 @@ export default function DiagnosticModal({
     const vehicle =
       year.trim() || make.trim() || model.trim() || vin.trim()
         ? {
-            ...(year.trim() ? { year: Number(year.trim()) } : {}),
-            ...(make.trim() ? { make: make.trim() } : {}),
-            ...(model.trim() ? { model: model.trim() } : {}),
-            ...(vin.trim() ? { vin: vin.trim() } : {}),
-          }
+          ...(year.trim() ? { year: Number(year.trim()) } : {}),
+          ...(make.trim() ? { make: make.trim() } : {}),
+          ...(model.trim() ? { model: model.trim() } : {}),
+          ...(vin.trim() ? { vin: vin.trim() } : {}),
+        }
         : undefined;
 
     try {
@@ -456,11 +456,10 @@ export default function DiagnosticModal({
               <button
                 type="button"
                 onClick={() => setServiceType("onsite")}
-                className={`border-2 rounded-[12px] p-5 text-left transition-all duration-150 cursor-pointer ${
-                  serviceType === "onsite"
+                className={`border-2 rounded-[12px] p-5 text-left transition-all duration-150 cursor-pointer ${serviceType === "onsite"
                     ? "border-[#ffa270] bg-[#fff8f5]"
                     : "border-[#e0e0e0] bg-white hover:border-[#ffa270]/50"
-                }`}
+                  }`}
               >
                 <p className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black mb-1">
                   On-site repair
@@ -472,11 +471,10 @@ export default function DiagnosticModal({
               <button
                 type="button"
                 onClick={() => setServiceType("dropoff")}
-                className={`border-2 rounded-[12px] p-5 text-left transition-all duration-150 cursor-pointer ${
-                  serviceType === "dropoff"
+                className={`border-2 rounded-[12px] p-5 text-left transition-all duration-150 cursor-pointer ${serviceType === "dropoff"
                     ? "border-[#ffa270] bg-[#fff8f5]"
                     : "border-[#e0e0e0] bg-white hover:border-[#ffa270]/50"
-                }`}
+                  }`}
               >
                 <p className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black mb-1">
                   Drop off car
