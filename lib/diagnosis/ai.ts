@@ -1,4 +1,4 @@
-import { getEnv } from "@/config/env";
+import { getPhase2Env } from "@/config/env";
 import { parsedDiagnosisSchema } from "@/types/airtable/schemas";
 import type { ParsedDiagnosis } from "@/types/airtable/diagnoses";
 import { AiDiagnosisError } from "./errors";
@@ -45,7 +45,7 @@ function parseDiagnosisContent(content: string): ParsedDiagnosis {
 }
 
 async function requestOpenAiCompletion(input: string): Promise<string> {
-  const env = getEnv();
+  const env = getPhase2Env();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 

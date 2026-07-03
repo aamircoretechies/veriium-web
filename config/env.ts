@@ -102,7 +102,14 @@ export type Phase5Env = z.infer<typeof phase5EnvSchema>;
 export type FutureEnv = z.infer<typeof futureEnvSchema>;
 export type Env = z.infer<typeof envSchema>;
 
+// Per-phase caches — each is validated independently on first use.
 let cachedEnv: Env | undefined;
+let cachedPhase0: Phase0Env | undefined;
+let cachedPhase1: Phase1Env | undefined;
+let cachedPhase2: Phase2Env | undefined;
+let cachedPhase3: Phase3Env | undefined;
+let cachedPhase4: Phase4Env | undefined;
+let cachedPhase5: Phase5Env | undefined;
 
 function formatEnvErrors(error: z.ZodError): string {
   const fieldErrors = error.flatten().fieldErrors as Record<string, string[] | undefined>;
@@ -111,9 +118,47 @@ function formatEnvErrors(error: z.ZodError): string {
     .join("\n");
 }
 
+function parsePhase<T>(schema: z.ZodType<T>, label: string): T {
+  const result = schema.safeParse(process.env);
+  if (!result.success) {
+    throw new Error(`Invalid environment variables (${label}):\n${formatEnvErrors(result.error)}`);
+  }
+  return result.data;
+}
+
+/** Phase 0 — Airtable + QStash + APP_URL */
+export function getPhase0Env(): Phase0Env {
+  return (cachedPhase0 ??= parsePhase(phase0EnvSchema, "Phase 0"));
+}
+
+/** Phase 1 — Twilio OTP/SMS + mechanic session */
+export function getPhase1Env(): Phase1Env {
+  return (cachedPhase1 ??= parsePhase(phase1EnvSchema, "Phase 1"));
+}
+
+/** Phase 2 — OpenAI / AI diagnosis */
+export function getPhase2Env(): Phase2Env {
+  return (cachedPhase2 ??= parsePhase(phase2EnvSchema, "Phase 2"));
+}
+
+/** Phase 3 — HMAC-signed booking URLs */
+export function getPhase3Env(): Phase3Env {
+  return (cachedPhase3 ??= parsePhase(phase3EnvSchema, "Phase 3"));
+}
+
+/** Phase 4 — Matching funnel + admin phone */
+export function getPhase4Env(): Phase4Env {
+  return (cachedPhase4 ??= parsePhase(phase4EnvSchema, "Phase 4"));
+}
+
+/** Phase 5 — Stripe payments */
+export function getPhase5Env(): Phase5Env {
+  return (cachedPhase5 ??= parsePhase(phase5EnvSchema, "Phase 5"));
+}
+
 /**
- * Lazily parse and cache environment variables. Phase 0–5 keys are required;
- * future-phase keys are optional until those features ship.
+ * Full env — validates ALL phases at once. Only use where all services are needed.
+ * Prefer the per-phase getters (getPhase0Env, getPhase2Env, etc.) in individual features.
  */
 export function getEnv(): Env {
   if (!cachedEnv) {

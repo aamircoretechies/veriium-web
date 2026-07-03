@@ -1,4 +1,4 @@
-import { getEnv } from "@/config/env";
+import { getPhase0Env } from "@/config/env";
 import {
   AIRTABLE_TABLES,
   AIRTABLE_TABLE_ENV_KEYS,
@@ -9,12 +9,12 @@ import {
 /** Resolve a logical table name to its Airtable table ID from env. */
 export function getTableId(table: AirtableTable): string {
   const envKey = AIRTABLE_TABLE_ENV_KEYS[table];
-  return getEnv()[envKey];
+  return getPhase0Env()[envKey];
 }
 
 /** All six table IDs keyed by logical table name. */
 export function getTableIdMap(): AirtableTableIdMap {
-  const env = getEnv();
+  const env = getPhase0Env();
   return {
     [AIRTABLE_TABLES.DRIVERS]: env.AIRTABLE_TABLE_DRIVERS,
     [AIRTABLE_TABLES.MECHANICS]: env.AIRTABLE_TABLE_MECHANICS,

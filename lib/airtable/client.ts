@@ -1,4 +1,4 @@
-import { getEnv } from "@/config/env";
+import { getPhase0Env } from "@/config/env";
 import type {
   AirtableErrorBody,
   AirtableListResponse,
@@ -179,7 +179,7 @@ function createRequest(
 }
 
 function createClient(): AirtableClient {
-  const env = getEnv();
+  const env = getPhase0Env();
   const request = createRequest(env.AIRTABLE_API_KEY, env.AIRTABLE_BASE_ID);
 
   return {
