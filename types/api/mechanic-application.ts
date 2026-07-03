@@ -1,10 +1,16 @@
 import { z } from "zod";
+import { isValidUsPhone } from "@/lib/phone";
 
 const serviceCheckboxSchema = z.record(z.string(), z.boolean());
 
+const usPhoneSchema = z
+  .string()
+  .min(1, "Phone number is required.")
+  .refine(isValidUsPhone, "Enter a valid US phone number, e.g. (555) 123-4567.");
+
 export const mechanicApplicationSchema = z.object({
   fullName: z.string().min(1),
-  phone: z.string().min(1),
+  phone: usPhoneSchema,
   email: z.string().email().optional(),
   bio: z.string().max(250).optional(),
   languages: z.string().optional(),
