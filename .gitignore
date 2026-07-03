@@ -1,7 +1,7 @@
 node_modules
 .next
 /dist
-.env
+.env.local
 /docs
 Veriium_Consultancy_Agreement_2026.pdf
 Veriium_Build_Scope_for_Developer_v3.pdf
