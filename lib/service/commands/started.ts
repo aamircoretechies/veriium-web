@@ -1,4 +1,5 @@
 import { getJobById } from "@/lib/jobs/lookup";
+import { isQuoteApproved, JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { updateJobStatus } from "@/lib/jobs/update";
 import {
   assertMechanicAssigned,
@@ -6,7 +7,6 @@ import {
 } from "../guards";
 import { InvalidServiceCommandError } from "../errors";
 
-/** STARTED — `quote_approved` → `in_progress` when not auto-started via ON_HAND. */
 export async function handleStarted(
   jobId: string,
   mechanicId: string,
@@ -14,15 +14,15 @@ export async function handleStarted(
   const job = await getJobById(jobId);
   assertMechanicAssigned(job, mechanicId);
 
-  if (job.fields.status !== "quote_approved") {
-    throw new InvalidServiceCommandError("STARTED", job.fields.status);
+  if (!isQuoteApproved(job.fields.status ?? JOB_STATUS.draft)) {
+    throw new InvalidServiceCommandError("STARTED", jobStatusOr(job.fields.status));
   }
 
-  const updated = await updateJobStatus(jobId, { status: "in_progress" });
+  const updated = await updateJobStatus(jobId, { status: JOB_STATUS.in_progress });
 
   return {
     jobId,
-    status: updated.fields.status,
+    status: updated.fields.status ?? "",
     action: "in_progress",
   };
 }

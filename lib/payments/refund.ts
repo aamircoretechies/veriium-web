@@ -1,6 +1,5 @@
 import { getStripe } from "@/lib/stripe/client";
-import { finalKey } from "@/lib/stripe/idempotency";
-import { findPaymentByIdempotencyKey, updatePaymentRecord } from "./record";
+import { findPaymentByJobAndType, updatePaymentRecord } from "./record";
 
 export type RefundFinalPaymentResult = {
   paymentIntentId: string;
@@ -15,7 +14,7 @@ export type RefundFinalPaymentResult = {
 export async function refundFinalPayment(
   jobId: string,
 ): Promise<RefundFinalPaymentResult> {
-  const existing = await findPaymentByIdempotencyKey(finalKey(jobId));
+  const existing = await findPaymentByJobAndType(jobId, "final_pi");
   const paymentIntentId = existing?.fields.stripe_payment_intent_id;
 
   if (!paymentIntentId) {
@@ -26,6 +25,9 @@ export async function refundFinalPayment(
   const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
   if (paymentIntent.status === "canceled") {
+    if (existing) {
+      await updatePaymentRecord(existing.id, { status: "canceled" });
+    }
     return {
       paymentIntentId,
       action: "canceled",
@@ -54,7 +56,10 @@ export async function refundFinalPayment(
     );
 
     if (existing) {
-      await updatePaymentRecord(existing.id, { status: "canceled" });
+      await updatePaymentRecord(existing.id, {
+        status: "refunded",
+        refunded_at: new Date().toISOString(),
+      });
     }
 
     return {

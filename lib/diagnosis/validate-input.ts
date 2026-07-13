@@ -8,9 +8,12 @@ import { CAR_KEYWORDS, SAFETY_KEYWORDS } from "./keywords";
 
 const ENGLISH_TOKEN_PATTERN = /[a-zA-Z]{2,}/g;
 
+export type ValidationRuleTriggered = "none" | "R3";
+
 export type DiagnosisValidationResult = {
   safety_flag: boolean;
   safety_message?: string;
+  validation_rule_triggered: ValidationRuleTriggered;
 };
 
 function escapeRegExp(value: string): string {
@@ -56,8 +59,12 @@ export function validateDiagnosisInput(input: string): DiagnosisValidationResult
     return {
       safety_flag: true,
       safety_message: DIAGNOSIS_SAFETY_MESSAGE,
+      validation_rule_triggered: "R3",
     };
   }
 
-  return { safety_flag: false };
+  return {
+    safety_flag: false,
+    validation_rule_triggered: "none",
+  };
 }

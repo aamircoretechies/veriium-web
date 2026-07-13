@@ -16,14 +16,14 @@ const DIAGNOSING_FROM_STATUSES = new Set([
 
 async function notifyDriverDiagnosing(jobId: string): Promise<void> {
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     return;
   }
 
   try {
     const driver = await getDriverById(driverId);
-    await sendSms(driver.fields.phone, serviceDiagnosingDriver());
+    await sendSms(driver.fields.phone_number, serviceDiagnosingDriver());
   } catch (error) {
     console.error(
       `[service/diagnosing] Failed to notify driver for job ${jobId}:`,

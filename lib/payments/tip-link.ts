@@ -3,7 +3,7 @@ import { getStripe } from "@/lib/stripe/client";
 import { STRIPE_CURRENCY } from "@/lib/stripe/constants";
 import { tipKey } from "@/lib/stripe/idempotency";
 import { DriverNotLinkedError } from "./errors";
-import { createPaymentRecord, findPaymentByIdempotencyKey } from "./record";
+import { createPaymentRecord, findPaymentByJobAndType } from "./record";
 
 export type TipPaymentLinkResult = {
   url: string;
@@ -20,13 +20,13 @@ export async function createTipPaymentLink(
   }
 
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     throw new DriverNotLinkedError(jobId);
   }
 
   const idempotencyKey = tipKey(jobId);
-  const existing = await findPaymentByIdempotencyKey(idempotencyKey);
+  const existing = await findPaymentByJobAndType(jobId, "tip");
   if (existing) {
     const stripe = getStripe();
     const links = await stripe.paymentLinks.list({ limit: 100 });
@@ -74,10 +74,8 @@ export async function createTipPaymentLink(
   const record = await createPaymentRecord({
     type: "tip",
     amount: amountDollars,
-    status: "pending",
-    idempotency_key: idempotencyKey,
-    job: [jobId],
-    driver: [driverId],
+    status: "requires_payment_method",
+    job_id: [jobId],
   });
 
   return {

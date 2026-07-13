@@ -46,7 +46,7 @@ export async function upsertDriver(
   }
 
   const createFields = createDriverSchema.parse({
-    phone: phoneE164,
+    phone_number: phoneE164,
     name: input.name,
     email: input.email,
   });

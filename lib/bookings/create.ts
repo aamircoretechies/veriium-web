@@ -5,15 +5,28 @@ import { upsertDriver } from "@/lib/drivers/upsert";
 import type { BookingRequest, BookingResponse } from "@/types/api/booking";
 import type { DiagnosisFields } from "@/types/airtable/diagnoses";
 import type { JobFields } from "@/types/airtable/jobs";
+import type { DiagnosisCategory } from "@/types/airtable/enums";
 import {
   createJobSchema,
   updateDiagnosisSchema,
 } from "@/types/airtable/schemas";
 import { DiagnosisNotFoundError } from "./errors";
+import { resolveVehicle } from "./resolve-vehicle";
 import {
   toJobIntakeFields,
   validateBookingIntake,
 } from "./validate-intake";
+
+function parseDiagnosisRaw(raw?: string): {
+  safety_flag?: boolean;
+} {
+  if (!raw?.trim()) return {};
+  try {
+    return JSON.parse(raw) as { safety_flag?: boolean };
+  } catch {
+    return {};
+  }
+}
 
 async function loadDiagnosis(diagnosisId: string) {
   const client = getAirtableClient();
@@ -42,16 +55,19 @@ export async function createBooking(
   });
 
   const diagnosis = await loadDiagnosis(intake.diagnosisId);
-  const intakeFields = toJobIntakeFields(intake);
+  const resolvedVehicle = await resolveVehicle(intake.vehicle);
+  const intakeFields = toJobIntakeFields(intake, resolvedVehicle);
+  const rawMeta = parseDiagnosisRaw(diagnosis.fields.ai_response_raw);
 
   const jobFields = createJobSchema.parse({
     status: "draft",
-    driver: [driverId],
-    diagnosis: [intake.diagnosisId],
+    driver_id: [driverId],
+    diagnosis_id: [intake.diagnosisId],
     zip_code: intake.zip,
-    diagnosis_category: diagnosis.fields.category,
+    diagnosis_category: diagnosis.fields
+      .ai_response_category as DiagnosisCategory,
     service_type: intake.serviceType,
-    safety_flag: diagnosis.fields.safety_flag ?? false,
+    safety_flag: rawMeta.safety_flag ?? false,
     ...intakeFields,
   });
 
@@ -61,14 +77,14 @@ export async function createBooking(
   });
 
   const diagnosisUpdate = updateDiagnosisSchema.parse({
-    driver: [driverId],
-    job: [job.id],
+    driver_id: [driverId],
+    job_id: [job.id],
   });
 
   await client.updateRecord<DiagnosisFields>(
     "diagnoses",
     intake.diagnosisId,
-    diagnosisUpdate,
+    diagnosisUpdate as Partial<DiagnosisFields>,
     { typecast: true },
   );
 

@@ -15,9 +15,19 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import {
+  ACTION_ITEM_TYPE,
+  actionItemJobFormula,
+  assertQuoteSubmitted,
+  driverSeedFields,
+  JOB_STATUS,
+  jobDetails,
+  mechanicSeedFields,
+  TEST_CATEGORY,
+  TEST_ZIP,
+} from "./schema-test-helpers";
+
 const RUN_ID = Date.now().toString(36);
-const TEST_ZIP = "30043";
-const TEST_CATEGORY = "brakes" as const;
 
 type TestResult = {
   name: string;
@@ -166,10 +176,11 @@ async function main(): Promise<void> {
   const { handleInboundSms } = await import("@/lib/sms/inbound");
 
   async function seedDriver(suffix: string): Promise<string> {
-    const phone = `+1555070${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("drivers", {
-      phone,
-      name: `Receipt Test Driver ${RUN_ID}-${suffix}`,
+      ...driverSeedFields(RUN_ID, suffix, {
+        phone_number: `+1555070${suffix.padStart(4, "0")}`,
+        name: `Receipt Test Driver ${RUN_ID}-${suffix}`,
+      }),
     });
     created.drivers.push(record.id);
     return record.id;
@@ -178,17 +189,10 @@ async function main(): Promise<void> {
   async function seedMechanic(suffix: string): Promise<{ id: string; phone: string }> {
     const phone = `+1555080${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("mechanics", {
-      status: "approved",
-      full_name: `Receipt Test Mech ${RUN_ID}-${suffix}`,
-      phone,
-      availability_status: "available",
-      setup_wizard_completed_at: new Date().toISOString(),
-      service_zip_codes: [TEST_ZIP],
-      service_categories: [TEST_CATEGORY],
-      mobile_available: true,
-      mobile_repairs_confirmed: true,
-      tools_confirmed: true,
-      transport_confirmed: true,
+      ...mechanicSeedFields(RUN_ID, suffix, {
+        phone_number: phone,
+        name: `Receipt Test Mech ${RUN_ID}-${suffix}`,
+      }),
     });
     created.mechanics.push(record.id);
     return { id: record.id, phone };
@@ -199,16 +203,15 @@ async function main(): Promise<void> {
     mechanicId: string,
   ): Promise<string> {
     const record = await client.createRecord("jobs", {
-      status: "diagnosing",
+      status: JOB_STATUS.diagnosing,
       zip_code: TEST_ZIP,
       diagnosis_category: TEST_CATEGORY,
       service_type: "mobile_repair",
       vehicle_year: 2020,
       vehicle_make: "Toyota",
       vehicle_model: "Camry",
-      driver: [driverId],
-      mechanic: [mechanicId],
-      diagnosing_at: new Date().toISOString(),
+      driver_id: [driverId],
+      mechanic_id: [mechanicId],
     });
     created.jobs.push(record.id);
     return record.id;
@@ -218,8 +221,7 @@ async function main(): Promise<void> {
     jobId: string,
     type?: string,
   ): Promise<number> {
-    const typeFilter = type ? `, {type} = '${type}'` : "";
-    const formula = `AND(FIND('${jobId}', ARRAYJOIN({job}, ',')), {status} = 'open'${typeFilter})`;
+    const formula = actionItemJobFormula(jobId, type);
     const response = await client.listRecords("action-items", {
       filterByFormula: formula,
       maxRecords: 20,
@@ -251,8 +253,8 @@ async function main(): Promise<void> {
     await quoteJob(jobId, mechanicId);
 
     const job = await getJobById(jobId);
-    assert(job.fields.receipt_status === "pending", "receipt_status pending");
-    assert(job.fields.status === "quote_submitted", "quote_submitted");
+    assert(jobDetails(job.fields).receipt_status === "pending", "receipt_status pending");
+    assertQuoteSubmitted(job);
   });
 
   console.log("\n2. Web receipt submit:");
@@ -271,8 +273,8 @@ async function main(): Promise<void> {
 
     assert(result.receiptStatus === "submitted", "submitted");
     const job = await getJobById(jobId);
-    assert(job.fields.receipt_url?.includes("cloudinary"), "receipt_url set");
-    assert(Boolean(job.fields.receipt_submitted_at), "receipt_submitted_at");
+    assert(job.fields.attachments?.[0]?.url?.includes("cloudinary"), "attachment set");
+    assert(jobDetails(job.fields).receipt_status === "submitted", "receipt_status submitted");
   });
 
   console.log("\n3. Deadline worker skips when submitted:");
@@ -304,10 +306,10 @@ async function main(): Promise<void> {
     assert(check.action === "receipt_overdue_flagged", "flagged");
 
     const job = await getJobById(jobId);
-    assert(job.fields.receipt_status === "overdue", "overdue");
-    assert(job.fields.parts_reimbursement_forfeited === true, "forfeited");
+    assert(jobDetails(job.fields).receipt_status === "overdue", "overdue");
+    assert(jobDetails(job.fields).parts_reimbursement_forfeited === true, "forfeited");
 
-    const actionCount = await countActionItemsForJob(jobId, "receipt_overdue");
+    const actionCount = await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.RECEIPT_NOT_SUBMITTED);
     assert(actionCount >= 1, "receipt_overdue action item");
   });
 
@@ -352,7 +354,7 @@ async function main(): Promise<void> {
       assert(inbound.receiptJobId === jobId, "job id");
 
       const job = await getJobById(jobId);
-      assert(job.fields.receipt_status === "submitted", "submitted via MMS");
+      assert(jobDetails(job.fields).receipt_status === "submitted", "submitted via MMS");
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -14,6 +14,7 @@ export type {
 
 export {
   ACTION_ITEM_STATUSES,
+  ACTION_ITEM_TYPE,
   ACTION_ITEM_TYPES,
   AVAILABILITY_STATUSES,
   DIAGNOSIS_CATEGORIES,
@@ -25,6 +26,8 @@ export {
   PAYMENT_STATUSES,
   PAYMENT_TYPES,
   RECEIPT_STATUSES,
+  SERVICE_CATEGORIES_CANONICAL,
+  SERVICE_CATEGORIES_LEGACY,
   SERVICE_TYPES,
   type ActionItemStatus,
   type ActionItemType,
@@ -49,6 +52,13 @@ export {
   type AirtableTableIdMap,
 } from "./tables";
 
+export {
+  FIELDS,
+  SCHEMA_TABLE_IDS,
+  type FieldsFor,
+  type SchemaTableKey,
+} from "./generated";
+
 export type { ActionItemFields } from "./action-items";
 export type { DiagnosisFields, ParsedDiagnosis } from "./diagnoses";
 export type { DriverFields } from "./drivers";
@@ -71,7 +81,6 @@ export {
   driveabilitySchema,
   fixNowVsWaitSchema,
   jobStatusSchema,
-  mechanicStatusSchema,
   parsedDiagnosisSchema,
   paymentStatusSchema,
   paymentTypeSchema,

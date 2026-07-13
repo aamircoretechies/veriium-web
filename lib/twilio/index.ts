@@ -8,6 +8,7 @@ export {
 
 export {
   checkVerification,
+  DEV_OTP_CODE,
   startVerification,
   type VerificationCheckResponse,
   type VerificationResponse,

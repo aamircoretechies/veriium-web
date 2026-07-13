@@ -1,12 +1,10 @@
 import { getAirtableClient } from "@/lib/airtable";
+import { and, eq, findInJoin } from "@/lib/airtable/formula";
+import { FIELDS } from "@/types/airtable/generated/fields";
 import type { ActionItemFields } from "@/types/airtable/action-items";
-import type { ActionItemType } from "@/types/airtable/enums";
+import { ACTION_ITEM_TYPE, type ActionItemType } from "@/types/airtable/enums";
 import type { AirtableLinkedRecords } from "@/types/airtable/fields";
 import { createActionItemSchema } from "@/types/airtable/schemas";
-
-function escapeAirtableString(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-}
 
 /** Return true when an open action item of the given type already exists for the job. */
 export async function hasOpenActionItem(
@@ -14,7 +12,11 @@ export async function hasOpenActionItem(
   type: ActionItemType,
 ): Promise<boolean> {
   const client = getAirtableClient();
-  const formula = `AND({type} = '${escapeAirtableString(type)}', {status} = 'open', FIND('${escapeAirtableString(jobId)}', ARRAYJOIN({job}, ',')))`;
+  const formula = and(
+    eq(FIELDS.ActionItems.type, type),
+    eq(FIELDS.ActionItems.status, "open"),
+    findInJoin(FIELDS.ActionItems.linked_job_id, jobId),
+  );
 
   const response = await client.listRecords<ActionItemFields>("action-items", {
     filterByFormula: formula,
@@ -30,17 +32,15 @@ export type CreateAwaitingAdminMatchActionItemInput = {
   driver?: AirtableLinkedRecords;
 };
 
-/** Create an admin alert action item when a job needs manual mechanic matching. */
 export async function createAwaitingAdminMatchActionItem(
   input: CreateAwaitingAdminMatchActionItemInput,
 ): Promise<string> {
   const actionItemFields = createActionItemSchema.parse({
-    type: "awaiting_admin_match",
+    type: ACTION_ITEM_TYPE.NO_MECHANIC_TIER4,
     status: "open",
-    title: "Job awaiting manual mechanic match",
-    notes: `Tier 4 escalation for job ${input.jobId} in ZIP ${input.zipCode}.`,
-    job: [input.jobId],
-    driver: input.driver,
+    description: `Tier 4 escalation for job ${input.jobId} in ZIP ${input.zipCode}.`,
+    linked_job_id: [input.jobId],
+    linked_driver_id: input.driver,
   });
 
   const client = getAirtableClient();
@@ -61,18 +61,16 @@ export type CreatePartsFlaggedActionItemInput = {
   driver?: AirtableLinkedRecords;
 };
 
-/** Create an admin alert when parts cost exceeds the pre-approval threshold (Exhibit A §6). */
 export async function createPartsFlaggedActionItem(
   input: CreatePartsFlaggedActionItemInput,
 ): Promise<string> {
   const actionItemFields = createActionItemSchema.parse({
-    type: "parts_flagged",
+    type: ACTION_ITEM_TYPE.PARTS_FLAGGED,
     status: "open",
-    title: "Parts quote flagged for admin review",
-    notes: `Job ${input.jobId}: parts $${input.partsCost.toFixed(2)} exceed $500 threshold (labor $${input.quoteAmount.toFixed(2)}). Approve in Airtable to release quote to driver.`,
-    job: [input.jobId],
-    mechanic: input.mechanic,
-    driver: input.driver,
+    description: `Job ${input.jobId}: parts $${input.partsCost.toFixed(2)} exceed $500 threshold (labor $${input.quoteAmount.toFixed(2)}). Approve in Airtable to release quote to driver.`,
+    linked_job_id: [input.jobId],
+    linked_mechanic_id: input.mechanic,
+    linked_driver_id: input.driver,
   });
 
   const client = getAirtableClient();
@@ -93,18 +91,16 @@ export type CreateCancellationReviewActionItemInput = {
   mechanic?: AirtableLinkedRecords;
 };
 
-/** Admin review when cancellation-related charges fail (§9.1, Exhibit A §4). */
 export async function createCancellationReviewActionItem(
   input: CreateCancellationReviewActionItemInput,
 ): Promise<string> {
   const actionItemFields = createActionItemSchema.parse({
-    type: "cancellation_review",
+    type: ACTION_ITEM_TYPE.FAILED_CANCELLATION_FEE,
     status: "open",
-    title: input.title,
-    notes: input.notes,
-    job: [input.jobId],
-    driver: input.driver,
-    mechanic: input.mechanic,
+    description: `${input.title}\n${input.notes}`,
+    linked_job_id: [input.jobId],
+    linked_driver_id: input.driver,
+    linked_mechanic_id: input.mechanic,
   });
 
   const client = getAirtableClient();
@@ -122,23 +118,27 @@ export type CreatePaymentFailedActionItemInput = {
   title?: string;
   notes: string;
   driver?: AirtableLinkedRecords;
+  type?: ActionItemType;
 };
 
-/** Create a payment_failed action item when no open item exists for the job. */
 export async function createPaymentFailedActionItem(
   input: CreatePaymentFailedActionItemInput,
 ): Promise<string | null> {
-  if (await hasOpenActionItem(input.jobId, "payment_failed")) {
+  const type =
+    input.type ?? ACTION_ITEM_TYPE.FAILED_DIAGNOSTIC_FEE;
+
+  if (await hasOpenActionItem(input.jobId, type)) {
     return null;
   }
 
   const actionItemFields = createActionItemSchema.parse({
-    type: "payment_failed",
+    type,
     status: "open",
-    title: input.title ?? "Payment failed",
-    notes: input.notes,
-    job: [input.jobId],
-    driver: input.driver,
+    description: input.title
+      ? `${input.title}\n${input.notes}`
+      : input.notes,
+    linked_job_id: [input.jobId],
+    linked_driver_id: input.driver,
   });
 
   const client = getAirtableClient();
@@ -157,7 +157,6 @@ export type CreateDiagnosticFeeRetryFailedActionItemInput = {
   driver?: AirtableLinkedRecords;
 };
 
-/** Escalation when the 24h diagnostic fee retry fails (Exhibit A §4). */
 export async function createDiagnosticFeeRetryFailedActionItem(
   input: CreateDiagnosticFeeRetryFailedActionItemInput,
 ): Promise<string | null> {
@@ -166,5 +165,6 @@ export async function createDiagnosticFeeRetryFailedActionItem(
     title: "Diagnostic fee retry failed",
     notes: input.notes,
     driver: input.driver,
+    type: ACTION_ITEM_TYPE.FAILED_DIAGNOSTIC_FEE,
   });
 }

@@ -34,18 +34,13 @@ function toResult(
 }
 
 function assertCanChangeAvailability(fields: MechanicFields): void {
-  if (fields.status === "rejected" || fields.status === "suspended") {
+  if (fields.background_check_status === "failed") {
     throw new MechanicNotEligibleForAvailabilityError(
       "This account cannot change availability.",
     );
   }
 }
 
-/**
- * Toggle mechanic availability (§4.8).
- * ON → `available` + `availability_updated_at` + schedule stale QStash.
- * OFF → `offline` (no schedule).
- */
 export async function setMechanicAvailability(
   mechanicId: string,
   available: boolean,
@@ -56,15 +51,15 @@ export async function setMechanicAvailability(
   assertCanChangeAvailability(fields);
 
   if (available) {
-    if (fields.status !== "approved") {
+    if (!fields.approved) {
       throw new MechanicNotEligibleForAvailabilityError(
         "Only approved mechanics can go available.",
       );
     }
 
-    if (!fields.setup_wizard_completed_at) {
+    if (fields.background_check_status !== "cleared") {
       throw new MechanicNotEligibleForAvailabilityError(
-        "Complete setup before turning availability on.",
+        "Background check must be cleared before turning availability on.",
       );
     }
 
@@ -88,7 +83,7 @@ export async function setMechanicAvailability(
     const record = await client.updateRecord<MechanicFields>(
       "mechanics",
       mechanicId,
-      updateFields,
+      updateFields as Partial<MechanicFields>,
       { typecast: true },
     );
 
@@ -115,7 +110,7 @@ export async function setMechanicAvailability(
   const record = await client.updateRecord<MechanicFields>(
     "mechanics",
     mechanicId,
-    updateFields,
+    updateFields as Partial<MechanicFields>,
     { typecast: true },
   );
 

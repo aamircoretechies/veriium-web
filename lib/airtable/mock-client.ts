@@ -93,6 +93,12 @@ function evaluateFormula(
     return String(fieldValue(fields, field!) ?? "") === value;
   }
 
+  const numericEquality = trimmed.match(/^\{([^}]+)\}\s*=\s*(\d+)$/);
+  if (numericEquality) {
+    const [, field, value] = numericEquality;
+    return Number(fieldValue(fields, field!)) === Number(value);
+  }
+
   const boolField = trimmed.match(/^\{([^}]+)\}\s*=\s*TRUE\(\)$/);
   if (boolField) {
     return Boolean(fieldValue(fields, boolField[1]!));

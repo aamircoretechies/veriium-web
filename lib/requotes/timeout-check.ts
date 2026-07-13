@@ -1,6 +1,6 @@
 import { getJobById } from "@/lib/jobs/lookup";
+import { isRequoteSubmitted } from "@/lib/jobs/status";
 import { declineRequote } from "@/lib/service/requote-response";
-import type { JobStatus } from "@/types/airtable/enums";
 
 export type RequoteTimeoutCheckResult = {
   jobId: string;
@@ -9,19 +9,16 @@ export type RequoteTimeoutCheckResult = {
   action?: "cancelled";
 };
 
-/**
- * QStash worker — 2h after driver requote SMS, auto-decline if still `requote_submitted` (§5.5).
- */
 export async function runRequoteTimeoutCheck(
   jobId: string,
 ): Promise<RequoteTimeoutCheckResult> {
   const job = await getJobById(jobId);
 
-  if (job.fields.status !== "requote_submitted") {
+  if (!isRequoteSubmitted(job)) {
     return {
       jobId,
       skipped: true,
-      reason: `status_${job.fields.status as JobStatus}`,
+      reason: `status_${job.fields.status ?? "unknown"}`,
     };
   }
 

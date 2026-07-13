@@ -1,5 +1,12 @@
 import { confirmJob } from "@/lib/disputes/confirm";
 import { disputeJob } from "@/lib/disputes/dispute";
+import {
+  isAwaitingPartsConsent,
+  isQuoteApproved,
+  isQuoteSubmitted,
+  isRequoteSubmitted,
+  JOB_STATUS,
+} from "@/lib/jobs/status";
 import { grantPartsConsent } from "@/lib/parts/consent";
 import {
   approveQuote,
@@ -24,39 +31,30 @@ export function isDriverResponseCommand(
   job: AirtableRecord<JobFields>,
 ): boolean {
   if (parsed.kind === "driver_quote") {
-    return (
-      job.fields.status === "quote_submitted" ||
-      job.fields.status === "requote_submitted"
-    );
+    return isQuoteSubmitted(job) || isRequoteSubmitted(job);
   }
 
   if (parsed.kind === "driver_confirm") {
-    return job.fields.status === "completed_pending_confirmation";
+    return job.fields.status === JOB_STATUS.completed_pending_confirmation;
   }
 
   if (parsed.kind === "match" && parsed.command === "DECLINE") {
-    return (
-      job.fields.status === "quote_submitted" ||
-      job.fields.status === "requote_submitted"
-    );
+    return isQuoteSubmitted(job) || isRequoteSubmitted(job);
   }
 
   if (parsed.kind === "match" && parsed.command === "YES") {
-    return job.fields.status === "awaiting_parts_consent";
+    return isAwaitingPartsConsent(job);
   }
 
   return false;
 }
 
-/**
- * Handle driver SMS replies: quote/requote APPROVE/DECLINE and confirm/dispute digits (§7.2, §9.3).
- */
 export async function handleDriverInbound(
   job: AirtableRecord<JobFields>,
   parsed: ParsedSmsCommand,
 ): Promise<DriverInboundResult> {
   if (parsed.kind === "driver_quote") {
-    if (job.fields.status === "requote_submitted") {
+    if (isRequoteSubmitted(job)) {
       if (parsed.command === "APPROVE") {
         return approveRequote(job.id);
       }
@@ -77,7 +75,7 @@ export async function handleDriverInbound(
   }
 
   if (parsed.kind === "match" && parsed.command === "DECLINE") {
-    if (job.fields.status === "requote_submitted") {
+    if (isRequoteSubmitted(job)) {
       return declineRequote(job.id);
     }
     return declineQuote(job.id);

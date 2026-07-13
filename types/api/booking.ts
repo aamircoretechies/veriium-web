@@ -23,6 +23,7 @@ export const bookingRequestSchema = z.object({
   serviceType: bookingServiceTypeSchema,
   vehicle: bookingVehicleSchema.optional(),
   additionalDetails: z.string().optional(),
+  scheduledTime: z.string().datetime().optional(),
   smsConsent: z.literal(true),
   phoneConsent: z.literal(true),
   verificationCode: z

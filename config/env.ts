@@ -22,14 +22,30 @@ export const phase0EnvSchema = z.object({
     .default("https://qstash.upstash.io"),
 });
 
+const isDev = process.env.NODE_ENV === "development";
+
+/** Treat blank env strings as missing so `.default()` can apply in development. */
+function twilioEnv(devDefault: string) {
+  if (!isDev) {
+    return z.string().min(1);
+  }
+  return z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().min(1).default(devDefault),
+  );
+}
+
 /**
  * Required for Phase 1 mechanic onboarding (Twilio OTP, SMS, webhooks, sessions).
+ * In development, blank Twilio SIDs fall back to placeholders — OTP uses a fixed
+ * console code (`DEV_OTP_CODE` in lib/twilio/verify.ts) and skips Twilio Verify.
  */
 export const phase1EnvSchema = z.object({
-  TWILIO_ACCOUNT_SID: z.string().min(1),
-  TWILIO_AUTH_TOKEN: z.string().min(1),
-  TWILIO_VERIFY_SERVICE_SID: z.string().min(1),
-  TWILIO_MESSAGING_SERVICE_SID: z.string().min(1),
+  TWILIO_ACCOUNT_SID: twilioEnv("ACdev"),
+  TWILIO_AUTH_TOKEN: twilioEnv("dev-twilio-auth-token"),
+  TWILIO_VERIFY_SERVICE_SID: twilioEnv("VAdev"),
+  TWILIO_MESSAGING_SERVICE_SID: twilioEnv("MGdev"),
   MECHANIC_SESSION_SECRET: z.string().min(32),
   AIRTABLE_WEBHOOK_SECRET: z.string().min(1),
 });
@@ -83,6 +99,14 @@ export const futureEnvSchema = z.object({
   NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
   // Phase 1 — SMS templates
   VERIIUM_SUPPORT_PHONE: z.string().optional(),
+  // Stripe payment idempotency key prefixes (not stored in Airtable)
+  PAYMENT_KEY_PREFIX_SETUP: z.string().default("setup-"),
+  PAYMENT_KEY_PREFIX_DIAGNOSTIC: z.string().default("diagnostic-"),
+  PAYMENT_KEY_PREFIX_CANCEL: z.string().default("cancel-"),
+  PAYMENT_KEY_PREFIX_TIP: z.string().default("tip-"),
+  PAYMENT_KEY_PREFIX_RECOVERY: z.string().default("recovery-"),
+  PAYMENT_KEY_PREFIX_INSTALLED: z.string().default("installed-"),
+  PAYMENT_KEY_PREFIX_PARTS_CANCEL: z.string().default("parts-cancel-"),
 });
 
 export const envSchema = phase0EnvSchema

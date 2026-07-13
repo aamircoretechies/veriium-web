@@ -2,6 +2,7 @@ import { getDriverById } from "@/lib/drivers/lookup";
 import { InvalidJobTransitionError } from "@/lib/jobs/transitions";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { getMatchTier, JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { getMechanicById } from "@/lib/mechanics/lookup";
 import { sendSms } from "@/lib/twilio/sms";
 import {
@@ -29,14 +30,14 @@ export type MatchResponseResult = {
 async function notifyDriverAccepted(
   job: AirtableRecord<JobFields>,
 ): Promise<void> {
-  const driverId = job.fields.driver?.[0];
-  if (!driverId) {
-    return;
-  }
+  const driverId = job.fields.driver_id?.[0];
+  if (!driverId) return;
 
   try {
     const driver = await getDriverById(driverId);
-    await sendSms(driver.fields.phone, matchAcceptedDriver());
+    if (driver.fields.phone_number) {
+      await sendSms(driver.fields.phone_number, matchAcceptedDriver());
+    }
   } catch (error) {
     console.error(
       `[matching/respond] Failed to notify driver for job ${job.id}:`,
@@ -49,19 +50,22 @@ function mechanicLinkedToJob(
   job: AirtableRecord<JobFields>,
   mechanicId: string,
 ): boolean {
-  return job.fields.mechanic?.includes(mechanicId) ?? false;
+  return job.fields.mechanic_id?.includes(mechanicId) ?? false;
 }
 
 async function acceptTier1Assignment(
   job: AirtableRecord<JobFields>,
   mechanicId: string,
 ): Promise<MatchResponseResult> {
-  if (job.fields.status === "accepted_by_mechanic") {
+  if (job.fields.status === JOB_STATUS.accepted_by_mechanic) {
     throw new AlreadyAssignedError(job.id);
   }
 
-  if (job.fields.status !== "matched") {
-    throw new InvalidMatchResponseError("ACCEPT", job.fields.status);
+  if (
+    job.fields.status !== JOB_STATUS.matched_awaiting_response ||
+    getMatchTier(job) !== 1
+  ) {
+    throw new InvalidMatchResponseError("ACCEPT", jobStatusOr(job.fields.status));
   }
 
   if (!mechanicLinkedToJob(job, mechanicId)) {
@@ -69,14 +73,14 @@ async function acceptTier1Assignment(
   }
 
   const updated = await updateJobStatus(job.id, {
-    status: "accepted_by_mechanic",
+    status: JOB_STATUS.accepted_by_mechanic,
   });
   await markMechanicBusy(mechanicId);
   await notifyDriverAccepted(updated);
 
   return {
     jobId: job.id,
-    status: updated.fields.status,
+    status: updated.fields.status ?? "",
     action: "accepted",
   };
 }
@@ -85,21 +89,24 @@ async function declineTier1Assignment(
   job: AirtableRecord<JobFields>,
   mechanicId: string,
 ): Promise<MatchResponseResult> {
-  if (job.fields.status !== "matched") {
-    throw new InvalidMatchResponseError("DECLINE", job.fields.status);
+  if (
+    job.fields.status !== JOB_STATUS.matched_awaiting_response ||
+    getMatchTier(job) !== 1
+  ) {
+    throw new InvalidMatchResponseError("DECLINE", jobStatusOr(job.fields.status));
   }
 
   if (!mechanicLinkedToJob(job, mechanicId)) {
     throw new MechanicNotAssignedError(job.id, mechanicId);
   }
 
-  await updateJobStatus(job.id, { mechanic: [] });
+  await updateJobStatus(job.id, { mechanic_id: [] });
   await escalateToTier(job.id, 2);
 
   const refreshed = await getJobById(job.id);
   return {
     jobId: job.id,
-    status: refreshed.fields.status,
+    status: refreshed.fields.status ?? "",
     action: "declined",
   };
 }
@@ -108,28 +115,29 @@ async function acceptBroadcast(
   job: AirtableRecord<JobFields>,
   mechanicId: string,
 ): Promise<MatchResponseResult> {
-  if (job.fields.status === "accepted_by_mechanic") {
+  if (job.fields.status === JOB_STATUS.accepted_by_mechanic) {
     throw new AlreadyAssignedError(job.id);
   }
 
+  const tier = getMatchTier(job);
   if (
-    job.fields.status !== "matched_tier2" &&
-    job.fields.status !== "matched_tier3"
+    job.fields.status !== JOB_STATUS.matched_awaiting_response ||
+    (tier !== 2 && tier !== 3)
   ) {
-    throw new InvalidMatchResponseError("YES", job.fields.status);
+    throw new InvalidMatchResponseError("YES", jobStatusOr(job.fields.status));
   }
 
   try {
     const updated = await updateJobStatus(job.id, {
-      status: "accepted_by_mechanic",
-      mechanic: [mechanicId],
+      status: JOB_STATUS.accepted_by_mechanic,
+      mechanic_id: [mechanicId],
     });
     await markMechanicBusy(mechanicId);
     await notifyDriverAccepted(updated);
 
     return {
       jobId: job.id,
-      status: updated.fields.status,
+      status: updated.fields.status ?? "",
       action: "accepted",
     };
   } catch (error) {
@@ -143,10 +151,8 @@ async function acceptBroadcast(
 async function notifyAlreadyAssigned(mechanicId: string): Promise<void> {
   try {
     const mechanic = await getMechanicById(mechanicId);
-    if (!mechanic.fields.phone) {
-      return;
-    }
-    await sendSms(mechanic.fields.phone, matchAlreadyAssigned());
+    if (!mechanic.fields.phone_number) return;
+    await sendSms(mechanic.fields.phone_number, matchAlreadyAssigned());
   } catch (error) {
     console.error(
       `[matching/respond] Failed to send already-assigned SMS to ${mechanicId}:`,
@@ -155,9 +161,6 @@ async function notifyAlreadyAssigned(mechanicId: string): Promise<void> {
   }
 }
 
-/**
- * Handle mechanic SMS responses during the matching phase (ACCEPT / DECLINE / YES / NO).
- */
 export async function handleMatchResponse(
   jobId: string,
   mechanicId: string,
@@ -168,7 +171,7 @@ export async function handleMatchResponse(
   if (command === "NO") {
     return {
       jobId,
-      status: job.fields.status,
+      status: job.fields.status ?? "",
       action: "ignored",
     };
   }
@@ -187,7 +190,7 @@ export async function handleMatchResponse(
       await notifyAlreadyAssigned(mechanicId);
       return {
         jobId,
-        status: job.fields.status,
+        status: job.fields.status ?? "",
         action: "already_assigned",
       };
     }

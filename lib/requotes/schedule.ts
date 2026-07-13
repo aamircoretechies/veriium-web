@@ -3,12 +3,12 @@ import {
   REQUOTE_TIMEOUT_CHECK_PATH,
 } from "@/lib/edge/constants";
 import { getJobById } from "@/lib/jobs/lookup";
+import { mergeQuoteDetails, parseQuoteDetails } from "@/lib/jobs/quote-details";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { getQStashClient } from "@/lib/qstash/client";
 import { scheduleJob } from "@/lib/qstash/schedule";
 import type { RequoteTimeoutPayload } from "@/types/api/service";
 
-/** Schedule the 2-hour requote response deadline after driver requote SMS (§5.5). */
 export async function scheduleRequoteTimeout(jobId: string): Promise<void> {
   const body: RequoteTimeoutPayload = { jobId };
 
@@ -24,16 +24,20 @@ export async function scheduleRequoteTimeout(jobId: string): Promise<void> {
       : undefined;
 
   if (messageId) {
+    const job = await getJobById(jobId);
     await updateJobStatus(jobId, {
-      requote_timeout_qstash_id: messageId,
+      quote_details: mergeQuoteDetails(job.fields.quote_details, {
+        requote_timeout_qstash_id: messageId,
+      }),
     });
   }
 }
 
-/** Cancel a pending requote timeout when the driver APPROVEs or DECLINEs. */
 export async function cancelRequoteTimeout(jobId: string): Promise<void> {
   const job = await getJobById(jobId);
-  const messageId = job.fields.requote_timeout_qstash_id?.trim();
+  const messageId = parseQuoteDetails(
+    job.fields.quote_details,
+  ).requote_timeout_qstash_id?.trim();
   if (!messageId) {
     return;
   }
@@ -50,5 +54,9 @@ export async function cancelRequoteTimeout(jobId: string): Promise<void> {
     }
   }
 
-  await updateJobStatus(jobId, { requote_timeout_qstash_id: "" });
+  await updateJobStatus(jobId, {
+    quote_details: mergeQuoteDetails(job.fields.quote_details, {
+      requote_timeout_qstash_id: "",
+    }),
+  });
 }

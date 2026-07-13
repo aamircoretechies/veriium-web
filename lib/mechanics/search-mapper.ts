@@ -1,6 +1,7 @@
 import { findNearestServiceZip } from "@/lib/geo/distance";
 import { getZipCityState } from "@/lib/geo/zip-centroids";
 import { mapCategoriesToUiServices } from "@/lib/mechanics/map-categories";
+import { normalizeServiceCategories } from "@/lib/mechanics/normalize-categories";
 import type { MechanicListing } from "@/types/api/mechanic-search";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { MechanicFields } from "@/types/airtable/mechanics";
@@ -16,30 +17,28 @@ function initialsFromName(name: string): string {
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
-function parseLanguages(value: string | undefined): string[] {
-  if (!value?.trim()) {
+function parseServiceZipCodes(raw: string | undefined): string[] {
+  if (!raw?.trim()) {
     return [];
   }
-
-  return value
-    .split(",")
-    .map((language) => language.trim())
+  return raw
+    .split(/[\n,]+/)
+    .map((zip) => zip.trim())
     .filter(Boolean);
 }
 
 function resolveListingZip(
   searchZip: string | undefined,
-  serviceZipCodes: string[] | undefined,
+  serviceZipCodes: string[],
 ): string {
-  const zips = serviceZipCodes ?? [];
   if (searchZip) {
-    const nearest = findNearestServiceZip(searchZip, zips);
+    const nearest = findNearestServiceZip(searchZip, serviceZipCodes);
     if (nearest) {
       return nearest.zip;
     }
   }
 
-  return zips[0] ?? "";
+  return serviceZipCodes[0] ?? "";
 }
 
 export function mapMechanicToListing(
@@ -47,31 +46,34 @@ export function mapMechanicToListing(
   searchZip?: string,
 ): MechanicListing {
   const fields = record.fields;
-  const serviceZipCodes = fields.service_zip_codes ?? [];
+  const serviceZipCodes = parseServiceZipCodes(fields.service_zip_codes);
   const nearest =
     searchZip && serviceZipCodes.length > 0
       ? findNearestServiceZip(searchZip, serviceZipCodes)
       : undefined;
   const listingZip = resolveListingZip(searchZip, serviceZipCodes);
   const location = getZipCityState(listingZip);
+  const name = fields.name ?? "Mechanic";
 
   return {
     id: record.id,
-    name: fields.full_name ?? "Mechanic",
-    avatar: initialsFromName(fields.full_name ?? ""),
+    name,
+    avatar: initialsFromName(name),
     rating: 0,
     reviewCount: 0,
-    yearsExperience: fields.years_experience ?? 0,
-    aseCertified: fields.ase_certified ?? false,
-    services: mapCategoriesToUiServices(fields.service_categories),
+    yearsExperience: 0,
+    aseCertified: fields.certified_status === "certified",
+    services: mapCategoriesToUiServices(
+      normalizeServiceCategories(fields.service_categories),
+    ),
     zipCode: listingZip,
     city: location?.city ?? "",
     state: location?.state ?? "",
     distance: nearest?.distance ?? 0,
-    mobileAvailable: fields.mobile_available ?? false,
-    shopAvailable: fields.shop_available ?? false,
+    mobileAvailable: Boolean(fields.phone_number?.trim()),
+    shopAvailable: Boolean(fields.shop_address?.trim()),
     availableToday: fields.availability_status === "available",
     bio: fields.bio ?? "",
-    languages: parseLanguages(fields.languages),
+    languages: fields.languages ?? [],
   };
 }

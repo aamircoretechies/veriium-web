@@ -1,5 +1,6 @@
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { scheduleJob } from "@/lib/qstash/schedule";
 import {
   getTierDelaysSeconds,
@@ -41,28 +42,28 @@ async function scheduleEscalations(
   ]);
 }
 
-/**
- * Begin the matching funnel for a job in `matched` status.
- *
- * Runs Tier 1 assignment when a mechanic is available; otherwise escalates to
- * Tier 2 immediately. Schedules QStash workers for tiers 2–4 anchored to
- * `matched_at`.
- */
 export async function beginMatching(jobId: string): Promise<BeginMatchingResult> {
   const job = await getJobById(jobId);
 
-  if (job.fields.status !== "matched") {
-    throw new JobNotMatchableError(jobId, job.fields.status);
+  if (job.fields.status !== JOB_STATUS.matched_awaiting_response) {
+    throw new JobNotMatchableError(jobId, jobStatusOr(job.fields.status));
   }
 
   if (!job.fields.zip_code) {
-    throw new JobNotMatchableError(jobId, job.fields.status, "Missing zip_code");
+    throw new JobNotMatchableError(
+      jobId,
+      jobStatusOr(job.fields.status),
+      "Missing zip_code",
+    );
   }
 
-  let matchedAt = job.fields.matched_at;
+  let matchedAt = job.fields.match_tier_started_at;
   if (!matchedAt) {
     matchedAt = new Date().toISOString();
-    await updateJobStatus(jobId, { matched_at: matchedAt });
+    await updateJobStatus(jobId, {
+      match_tier: 1,
+      match_tier_started_at: matchedAt,
+    });
   }
 
   const tier1 = await runTier1(jobId);

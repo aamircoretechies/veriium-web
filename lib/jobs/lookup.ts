@@ -1,14 +1,20 @@
 import { getAirtableClient } from "@/lib/airtable";
+import { and, eq, findInJoin, or } from "@/lib/airtable/formula";
+import { FIELDS } from "@/types/airtable/generated/fields";
 import { findDriverByPhone } from "@/lib/drivers/lookup";
 import { findMechanicByPhone } from "@/lib/mechanics/lookup";
+import { parseMechanicZipCodes } from "@/lib/mechanics/zip-codes";
+import {
+  getMatchTier,
+  isQuoteSubmitted,
+  isRequoteSubmitted,
+  JOB_STATUS,
+} from "@/lib/jobs/status";
+import { normalizeServiceCategory } from "@/lib/mechanics/normalize-categories";
 import { normalizeUsPhone } from "@/lib/phone";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { JobFields } from "@/types/airtable/jobs";
 import { ACTIVE_SERVICE_STATUSES } from "./transitions";
-
-function escapeAirtableString(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-}
 
 /** Fetch a job row by Airtable record ID. */
 export async function getJobById(
@@ -18,12 +24,6 @@ export async function getJobById(
   return client.getRecord<JobFields>("jobs", recordId);
 }
 
-/**
- * Find the open matching-phase job a mechanic should respond to (ACCEPT / DECLINE / YES).
- *
- * Priority: Tier 1 assignment (`matched` + linked mechanic), then Tier 2/3 broadcast
- * pools filtered by service ZIP (+ category for Tier 2).
- */
 export async function findPendingJobForMechanic(
   phone: string,
 ): Promise<AirtableRecord<JobFields> | null> {
@@ -34,12 +34,16 @@ export async function findPendingJobForMechanic(
   }
 
   const client = getAirtableClient();
-  const mechanicId = escapeAirtableString(mechanic.id);
+  const mechanicId = mechanic.id;
 
   const tier1 = await client.listRecords<JobFields>("jobs", {
-    filterByFormula: `AND({status}='matched', FIND('${mechanicId}', ARRAYJOIN({mechanic}, ',')))`,
+    filterByFormula: and(
+      eq(FIELDS.Jobs.status, JOB_STATUS.matched_awaiting_response),
+      eq(FIELDS.Jobs.match_tier, 1),
+      findInJoin(FIELDS.Jobs.mechanic_id, mechanicId),
+    ),
     maxRecords: 1,
-    sort: [{ field: "matched_at", direction: "desc" }],
+    sort: [{ field: FIELDS.Jobs.match_tier_started_at, direction: "desc" }],
   });
 
   if (tier1.records[0]) {
@@ -47,12 +51,17 @@ export async function findPendingJobForMechanic(
   }
 
   const broadcast = await client.listRecords<JobFields>("jobs", {
-    filterByFormula: `OR({status}='matched_tier2', {status}='matched_tier3')`,
-    sort: [{ field: "matched_at", direction: "desc" }],
+    filterByFormula: and(
+      eq(FIELDS.Jobs.status, JOB_STATUS.matched_awaiting_response),
+      or(eq(FIELDS.Jobs.match_tier, 2), eq(FIELDS.Jobs.match_tier, 3)),
+    ),
+    sort: [{ field: FIELDS.Jobs.match_tier_started_at, direction: "desc" }],
   });
 
-  const zips = new Set(mechanic.fields.service_zip_codes ?? []);
-  const categories = new Set(mechanic.fields.service_categories ?? []);
+  const zips = new Set(parseMechanicZipCodes(mechanic.fields.service_zip_codes));
+  const categories = new Set(
+    (mechanic.fields.service_categories ?? []).map(normalizeServiceCategory),
+  );
 
   for (const job of broadcast.records) {
     const zip = job.fields.zip_code;
@@ -60,9 +69,9 @@ export async function findPendingJobForMechanic(
       continue;
     }
 
-    if (job.fields.status === "matched_tier2") {
+    if (getMatchTier(job) === 2) {
       const category = job.fields.diagnosis_category;
-      if (!category || !categories.has(category)) {
+      if (!category || !categories.has(normalizeServiceCategory(category))) {
         continue;
       }
     }
@@ -75,15 +84,11 @@ export async function findPendingJobForMechanic(
 
 function buildStatusOrFormula(statuses: readonly string[]): string {
   if (statuses.length === 1) {
-    return `{status}='${escapeAirtableString(statuses[0])}'`;
+    return eq(FIELDS.Jobs.status, statuses[0]!);
   }
-
-  return `OR(${statuses.map((status) => `{status}='${escapeAirtableString(status)}'`).join(", ")})`;
+  return or(...statuses.map((status) => eq(FIELDS.Jobs.status, status)));
 }
 
-/**
- * Find the mechanic's active in-service job (`accepted_by_mechanic` … `in_progress`).
- */
 export async function findActiveJobForMechanic(
   phone: string,
 ): Promise<AirtableRecord<JobFields> | null> {
@@ -94,21 +99,20 @@ export async function findActiveJobForMechanic(
   }
 
   const client = getAirtableClient();
-  const mechanicId = escapeAirtableString(mechanic.id);
   const statusFilter = buildStatusOrFormula(ACTIVE_SERVICE_STATUSES);
 
   const response = await client.listRecords<JobFields>("jobs", {
-    filterByFormula: `AND(${statusFilter}, FIND('${mechanicId}', ARRAYJOIN({mechanic}, ',')))`,
+    filterByFormula: and(
+      statusFilter,
+      findInJoin(FIELDS.Jobs.mechanic_id, mechanic.id),
+    ),
     maxRecords: 1,
-    sort: [{ field: "accepted_at", direction: "desc" }],
+    sort: [{ field: FIELDS.Jobs.created_at, direction: "desc" }],
   });
 
   return response.records[0] ?? null;
 }
 
-/**
- * Find a job awaiting a driver SMS reply (quote APPROVE/DECLINE or confirm/dispute).
- */
 export async function findJobAwaitingDriverResponse(
   phone: string,
 ): Promise<AirtableRecord<JobFields> | null> {
@@ -119,19 +123,24 @@ export async function findJobAwaitingDriverResponse(
   }
 
   const client = getAirtableClient();
-  const driverId = escapeAirtableString(driver.id);
   const statusFilter = buildStatusOrFormula([
-    "awaiting_parts_consent",
-    "completed_pending_confirmation",
-    "quote_submitted",
-    "requote_submitted",
+    JOB_STATUS.awaiting_customer_approval,
+    JOB_STATUS.completed_pending_confirmation,
+    JOB_STATUS.quote_provided,
   ]);
 
   const response = await client.listRecords<JobFields>("jobs", {
-    filterByFormula: `AND(${statusFilter}, FIND('${driverId}', ARRAYJOIN({driver}, ',')))`,
-    maxRecords: 1,
-    sort: [{ field: "requote_submitted_at", direction: "desc" }],
+    filterByFormula: and(
+      statusFilter,
+      findInJoin(FIELDS.Jobs.driver_id, driver.id),
+    ),
+    maxRecords: 5,
+    sort: [{ field: FIELDS.Jobs.created_at, direction: "desc" }],
   });
 
-  return response.records[0] ?? null;
+  return (
+    response.records.find(
+      (job) => isQuoteSubmitted(job.fields) || isRequoteSubmitted(job.fields),
+    ) ?? response.records[0] ?? null
+  );
 }

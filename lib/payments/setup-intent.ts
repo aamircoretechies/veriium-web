@@ -2,6 +2,7 @@ import { getOrCreateStripeCustomer } from "@/lib/drivers/stripe-customer";
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { getStripe } from "@/lib/stripe/client";
 import { setupKey } from "@/lib/stripe/idempotency";
 import {
@@ -11,7 +12,7 @@ import {
 } from "./errors";
 import {
   createPaymentRecord,
-  findPaymentByIdempotencyKey,
+  findPaymentByJobAndType,
 } from "./record";
 
 export type SetupIntentResult = {
@@ -25,36 +26,32 @@ const REUSABLE_SETUP_STATUSES = new Set([
   "requires_action",
 ]);
 
-/**
- * Orchestrate card-save SetupIntent flow (§5.4).
- *
- * - `draft` → `matched_awaiting_payment` with policy timestamp before Stripe call
- * - Idempotent retry in `matched_awaiting_payment` returns the existing SetupIntent
- */
 export async function createSetupIntentForJob(
   jobId: string,
 ): Promise<SetupIntentResult> {
   const job = await getJobById(jobId);
   const status = job.fields.status;
 
-  if (status !== "draft" && status !== "matched_awaiting_payment") {
-    throw new JobNotPayableError(jobId, status);
+  if (
+    status !== JOB_STATUS.draft &&
+    status !== JOB_STATUS.matched_awaiting_payment
+  ) {
+    throw new JobNotPayableError(jobId, jobStatusOr(status));
   }
 
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     throw new DriverNotLinkedError(jobId);
   }
 
-  const idempotencyKey = setupKey(jobId);
-  const existingPayment = await findPaymentByIdempotencyKey(idempotencyKey);
+  const existingPayment = await findPaymentByJobAndType(jobId, "setup_intent");
 
   if (existingPayment?.fields.status === "succeeded") {
     throw new PaymentAlreadyCompletedError(jobId);
   }
 
   if (
-    status === "matched_awaiting_payment" &&
+    status === JOB_STATUS.matched_awaiting_payment &&
     existingPayment?.fields.stripe_setup_intent_id
   ) {
     const stripe = getStripe();
@@ -79,41 +76,40 @@ export async function createSetupIntentForJob(
 
   const now = new Date().toISOString();
 
-  if (status === "draft") {
+  if (status === JOB_STATUS.draft) {
     await updateJobStatus(jobId, {
-      status: "matched_awaiting_payment",
-      cancellation_policy_accepted_at: now,
-      payment_setup_at: now,
+      status: JOB_STATUS.matched_awaiting_payment,
+      policy_disclosed_at: now,
     });
   }
 
   const driver = await getDriverById(driverId);
   const stripeCustomerId = await getOrCreateStripeCustomer({
     driverId,
-    phone: driver.fields.phone,
+    phone: driver.fields.phone_number!,
     name: driver.fields.name,
   });
 
   const stripe = getStripe();
-  const setupIntent = await stripe.setupIntents.create({
-    customer: stripeCustomerId,
-    usage: "off_session",
-    metadata: { jobId },
-  });
+  const setupIntent = await stripe.setupIntents.create(
+    {
+      customer: stripeCustomerId,
+      usage: "off_session",
+      metadata: { jobId },
+    },
+    { idempotencyKey: setupKey(jobId) },
+  );
 
   if (!setupIntent.client_secret) {
     throw new Error(`Stripe SetupIntent ${setupIntent.id} missing client_secret`);
   }
 
   await createPaymentRecord({
-    type: "setup",
+    type: "setup_intent",
     amount: 0,
-    status: "pending",
-    idempotency_key: idempotencyKey,
-    stripe_customer_id: stripeCustomerId,
+    status: "requires_payment_method",
     stripe_setup_intent_id: setupIntent.id,
-    job: [jobId],
-    driver: [driverId],
+    job_id: [jobId],
   });
 
   return {

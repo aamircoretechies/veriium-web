@@ -1,64 +1,95 @@
 /**
- * Domain enums from Veriium_Build_Scope_for_Developer_v3.pdf
- * (§4.7, §5.3, §8, §9–11, Appendix B/C).
- *
- * Field names in table interfaces use these literal values.
- * Align with the live Airtable base if column option labels differ.
+ * Schema-aligned enums from docs/schema.json (generated) plus app-only values.
  */
+export {
+  ACTION_ITEMS_PRIORITY,
+  ACTION_ITEMS_STATUS,
+  ACTION_ITEMS_TYPE,
+  DIAGNOSES_AI_RESPONSE_CATEGORY,
+  DIAGNOSES_AI_RESPONSE_CONFIDENCE,
+  DIAGNOSES_AI_RESPONSE_DRIVEABILITY,
+  DIAGNOSES_VALIDATION_RULE_TRIGGERED,
+  JOBS_CANCELLED_BY,
+  JOBS_DIAGNOSIS_CATEGORY,
+  JOBS_DIAGNOSIS_DRIVEABILITY,
+  JOBS_PAYMENT_STATUS,
+  JOBS_SERVICE_TYPE,
+  JOBS_STATUS,
+  MECHANICS_AVAILABILITY_STATUS,
+  MECHANICS_BACKGROUND_CHECK_STATUS,
+  MECHANICS_CERTIFIED_STATUS,
+  MECHANICS_LANGUAGES,
+  MECHANICS_SERVICE_CATEGORIES,
+  MECHANICS_TOOLS_CONFIRMED,
+  PAYMENTS_STATUS,
+  PAYMENTS_TYPE,
+  SERVICE_CATEGORIES_CANONICAL,
+  SERVICE_CATEGORIES_LEGACY,
+  type ActionItemsPriority,
+  type ActionItemsStatus,
+  type ActionItemsType,
+  type DiagnosesAiResponseCategory,
+  type DiagnosesAiResponseConfidence,
+  type DiagnosesAiResponseDriveability,
+  type DiagnosesValidationRuleTriggered,
+  type JobsCancelledBy,
+  type JobsDiagnosisCategory,
+  type JobsDiagnosisDriveability,
+  type JobsPaymentStatus,
+  type JobsServiceType,
+  type JobsStatus,
+  type MechanicsAvailabilityStatus,
+  type MechanicsBackgroundCheckStatus,
+  type MechanicsCertifiedStatus,
+  type MechanicsLanguages,
+  type MechanicsServiceCategories,
+  type MechanicsToolsConfirmed,
+  type PaymentsStatus,
+  type PaymentsType,
+  type ServiceCategoryCanonical,
+  type ServiceCategoryLegacy,
+} from "./generated/enums";
 
-/** §11.3 / Appendix C — mechanic account state. */
-export const MECHANIC_STATUSES = [
-  "application_submitted",
-  "under_review",
-  "needs_more_info",
-  "approved",
-  "rejected",
-  "suspended",
-] as const;
+import type { ActionItemsType } from "./generated/enums";
 
-export type MechanicStatus = (typeof MECHANIC_STATUSES)[number];
+/** Alias for generated JobsStatus. */
+export type JobStatus = import("./generated/enums").JobsStatus;
 
-/** §11.3 / §4.8 — availability toggle (defaults to offline on approval). */
-export const AVAILABILITY_STATUSES = [
-  "available",
-  "busy",
-  "offline",
-  "stale",
-] as const;
+export { JOBS_STATUS as JOB_STATUSES } from "./generated/enums";
 
-export type AvailabilityStatus = (typeof AVAILABILITY_STATUSES)[number];
+export type PaymentStatus = import("./generated/enums").PaymentsStatus;
+export { PAYMENTS_STATUS as PAYMENT_STATUSES } from "./generated/enums";
 
-/** Appendix B — job lifecycle. */
-export const JOB_STATUSES = [
-  "draft",
-  "matched_awaiting_payment",
-  "matched",
-  "matched_tier2",
-  "matched_tier3",
-  "awaiting_admin_match",
-  "accepted_by_mechanic",
-  "en_route",
-  "vehicle_received",
-  "arrived",
-  "diagnosing",
-  "quote_pending_admin",
-  "quote_submitted",
-  "quote_approved",
-  "awaiting_parts_consent",
-  "quote_declined",
-  "requote_submitted",
-  "in_progress",
-  "completed_pending_confirmation",
-  "confirmed",
-  "disputed",
-  "refunded",
-  "cancelled",
-  "no_show_pending_review",
-] as const;
+export type PaymentType = import("./generated/enums").PaymentsType;
+export { PAYMENTS_TYPE as PAYMENT_TYPES } from "./generated/enums";
 
-export type JobStatus = (typeof JOB_STATUSES)[number];
+export type ActionItemStatus = import("./generated/enums").ActionItemsStatus;
+export { ACTION_ITEMS_STATUS as ACTION_ITEM_STATUSES } from "./generated/enums";
 
-/** §5.3 — AI diagnosis category enum. */
+export type ActionItemType = ActionItemsType;
+export { ACTION_ITEMS_TYPE as ACTION_ITEM_TYPES } from "./generated/enums";
+
+export type AvailabilityStatus =
+  import("./generated/enums").MechanicsAvailabilityStatus;
+export {
+  MECHANICS_AVAILABILITY_STATUS as AVAILABILITY_STATUSES,
+} from "./generated/enums";
+
+/** Schema action item type literals used in create paths. */
+export const ACTION_ITEM_TYPE = {
+  PENDING_MECHANIC_APPROVAL: "Pending mechanic approval",
+  NO_SHOW_REPORT: "No-show report filed",
+  OPEN_DISPUTE: "Open dispute",
+  FAILED_CANCELLATION_FEE: "Failed cancellation fee charge",
+  FAILED_DIAGNOSTIC_FEE: "Failed diagnostic fee charge",
+  NO_MECHANIC_TIER4: "No mechanic available Tier 4",
+  PARTS_FLAGGED: "Parts cost flagged",
+  RECEIPT_NOT_SUBMITTED: "Receipt not submitted",
+  DRIVER_NON_RESPONSE_72H: "Driver non-response 72h",
+  CHARGEBACK: "Chargeback received",
+} as const satisfies Record<string, ActionItemsType>;
+
+/** Canonical diagnosis categories for AI + matching (snake_case). */
 export const DIAGNOSIS_CATEGORIES = [
   "battery_starting",
   "brakes",
@@ -77,90 +108,42 @@ export const DIAGNOSIS_CATEGORIES = [
 
 export type DiagnosisCategory = (typeof DIAGNOSIS_CATEGORIES)[number];
 
-/** §5.3 — driveability assessment. */
 export const DRIVEABILITY_VALUES = ["safe", "caution", "do_not_drive"] as const;
-
 export type Driveability = (typeof DRIVEABILITY_VALUES)[number];
 
-/** §5.3 — urgency recommendation. */
 export const FIX_NOW_VS_WAIT_VALUES = ["now", "soon", "can_wait"] as const;
-
 export type FixNowVsWait = (typeof FIX_NOW_VS_WAIT_VALUES)[number];
 
-/** §5.3 — model confidence. */
 export const DIAGNOSIS_CONFIDENCE_VALUES = ["high", "medium", "low"] as const;
+export type DiagnosisConfidence =
+  (typeof DIAGNOSIS_CONFIDENCE_VALUES)[number];
 
-export type DiagnosisConfidence = (typeof DIAGNOSIS_CONFIDENCE_VALUES)[number];
-
-/** §6 / §7 — mobile on-site vs shop drop-off. */
 export const SERVICE_TYPES = ["mobile_repair", "dropoff"] as const;
-
 export type ServiceType = (typeof SERVICE_TYPES)[number];
 
-/** §10.2 — payment record kinds + idempotency key prefixes. */
-export const PAYMENT_TYPES = [
-  "setup",
-  "final",
-  "final_recovery",
-  "cancellation_fee",
-  "diagnostic_fee",
-  "tip",
-  "installed_parts",
-  "parts_cancellation",
-] as const;
-
-export type PaymentType = (typeof PAYMENT_TYPES)[number];
-
-/** Stripe-aligned payment row status. */
-export const PAYMENT_STATUSES = [
-  "pending",
-  "processing",
-  "succeeded",
-  "failed",
-  "canceled",
-  "requires_action",
-] as const;
-
-export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
-
-/**
- * §11.1 — admin alert types (11 total per scope doc).
- * Derived from onboarding, matching, disputes, and Stripe webhooks.
- */
-export const ACTION_ITEM_TYPES = [
-  "new_mechanic_application",
-  "awaiting_admin_match",
-  "no_show_pending_review",
-  "dispute",
-  "dispute_reminder_24h",
-  "dispute_reminder_48h",
-  "dispute_reminder_72h",
-  "setup_failed",
-  "payment_failed",
-  "charge_dispute",
-  "cancellation_review",
-  "receipt_overdue",
-  "receipt_review",
-  "parts_flagged",
-] as const;
-
-export type ActionItemType = (typeof ACTION_ITEM_TYPES)[number];
-
-/** Exhibit A §5.3 — parts receipt submission state (field names INFERRED). */
+/** Stored in Jobs.quote_details JSON — not an Airtable column. */
 export const RECEIPT_STATUSES = [
   "pending",
   "submitted",
   "overdue",
   "invalid",
 ] as const;
-
 export type ReceiptStatus = (typeof RECEIPT_STATUSES)[number];
 
-export const ACTION_ITEM_STATUSES = [
-  "open",
-  "in_progress",
-  "resolved",
-  "dismissed",
-] as const;
+/** @deprecated Use MechanicsRecord.approved + background_check_status */
+export type MechanicStatus =
+  | "application_submitted"
+  | "under_review"
+  | "needs_more_info"
+  | "approved"
+  | "rejected"
+  | "suspended";
 
-export type ActionItemStatus = (typeof ACTION_ITEM_STATUSES)[number];
+export const MECHANIC_STATUSES = [
+  "application_submitted",
+  "under_review",
+  "needs_more_info",
+  "approved",
+  "rejected",
+  "suspended",
+] as const;

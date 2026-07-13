@@ -4,6 +4,7 @@ import { getAirtableClient } from "@/lib/airtable";
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { JOB_STATUS } from "@/lib/jobs/status";
 import { beginMatching } from "@/lib/matching/start";
 import { getStripe } from "@/lib/stripe/client";
 import type { DriverFields } from "@/types/airtable/drivers";
@@ -23,10 +24,6 @@ export type CompleteSetupResult = {
   alreadyCompleted: boolean;
 };
 
-/**
- * Handle `setup_intent.succeeded`: persist customer + PM, transition job → `matched`,
- * and kick off matching.
- */
 export async function completeSetup(
   setupIntent: Stripe.SetupIntent,
 ): Promise<CompleteSetupResult> {
@@ -67,7 +64,8 @@ export async function completeSetup(
     });
   }
 
-  const driverId = payment.fields.driver?.[0];
+  const job = await getJobById(jobId);
+  const driverId = job.fields.driver_id?.[0];
   if (driverId && customerId) {
     const driver = await getDriverById(driverId);
     if (!driver.fields.stripe_customer_id) {
@@ -75,20 +73,26 @@ export async function completeSetup(
         stripe_customer_id: customerId,
       });
       const client = getAirtableClient();
-      await client.updateRecord<DriverFields>("drivers", driverId, updateFields, {
-        typecast: true,
-      });
+      await client.updateRecord<DriverFields>(
+        "drivers",
+        driverId,
+        updateFields,
+        { typecast: true },
+      );
     }
   }
 
   await updatePaymentRecord(payment.id, {
     status: "succeeded",
-    ...(customerId ? { stripe_customer_id: customerId } : {}),
   });
 
-  const job = await getJobById(jobId);
-  if (job.fields.status === "matched_awaiting_payment") {
-    await updateJobStatus(jobId, { status: "matched" });
+  if (job.fields.status === JOB_STATUS.matched_awaiting_payment) {
+    const now = new Date().toISOString();
+    await updateJobStatus(jobId, {
+      status: JOB_STATUS.matched_awaiting_response,
+      match_tier: 1,
+      match_tier_started_at: now,
+    });
     await beginMatching(jobId);
   }
 

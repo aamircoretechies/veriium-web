@@ -12,7 +12,7 @@ export function mechanicLinkedToJob(
   job: AirtableRecord<JobFields>,
   mechanicId: string,
 ): boolean {
-  return job.fields.mechanic?.includes(mechanicId) ?? false;
+  return job.fields.mechanic_id?.includes(mechanicId) ?? false;
 }
 
 export function assertMechanicAssigned(

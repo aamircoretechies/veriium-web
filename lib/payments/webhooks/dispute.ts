@@ -2,14 +2,13 @@ import type Stripe from "stripe";
 
 import { getAirtableClient } from "@/lib/airtable";
 import { getJobById } from "@/lib/jobs/lookup";
+import { JOB_STATUS } from "@/lib/jobs/status";
 import { updateJobStatus } from "@/lib/jobs/update";
-import {
-  findPaymentByChargeId,
-  findPaymentByPaymentIntentId,
-} from "@/lib/payments/record";
+import { findPaymentByPaymentIntentId } from "@/lib/payments/record";
 import { getStripe } from "@/lib/stripe/client";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 import { createActionItemSchema } from "@/types/airtable/schemas";
+import { ACTION_ITEM_TYPE } from "@/types/airtable/enums";
 
 export async function handleDisputeCreated(event: Stripe.Event): Promise<void> {
   const dispute = event.data.object as Stripe.Dispute;
@@ -21,39 +20,29 @@ export async function handleDisputeCreated(event: Stripe.Event): Promise<void> {
   }
 
   let jobId: string | undefined;
-  let driverId: string | undefined;
 
-  const payment = await findPaymentByChargeId(chargeId);
-  if (payment) {
-    jobId = payment.fields.job?.[0];
-    driverId = payment.fields.driver?.[0];
-  } else {
-    const stripe = getStripe();
-    const charge = await stripe.charges.retrieve(chargeId);
-    const paymentIntentId =
-      typeof charge.payment_intent === "string"
-        ? charge.payment_intent
-        : charge.payment_intent?.id;
+  const stripe = getStripe();
+  const charge = await stripe.charges.retrieve(chargeId);
+  const paymentIntentId =
+    typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : charge.payment_intent?.id;
 
-    if (paymentIntentId) {
-      const paymentByIntent = await findPaymentByPaymentIntentId(paymentIntentId);
-      if (paymentByIntent) {
-        jobId = paymentByIntent.fields.job?.[0];
-        driverId = paymentByIntent.fields.driver?.[0];
-      } else {
-        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-        jobId = paymentIntent.metadata?.jobId;
-      }
+  if (paymentIntentId) {
+    const paymentByIntent = await findPaymentByPaymentIntentId(paymentIntentId);
+    if (paymentByIntent) {
+      jobId = paymentByIntent.fields.job_id?.[0];
+    } else {
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      jobId = paymentIntent.metadata?.jobId;
     }
   }
 
   const actionItemFields = createActionItemSchema.parse({
-    type: "charge_dispute",
+    type: ACTION_ITEM_TYPE.OPEN_DISPUTE,
     status: "open",
-    title: "Stripe charge dispute opened",
-    notes: `Dispute ${dispute.id} on charge ${chargeId}. Reason: ${dispute.reason ?? "unknown"}.`,
-    ...(jobId ? { job: [jobId] } : {}),
-    ...(driverId ? { driver: [driverId] } : {}),
+    description: `Dispute ${dispute.id} on charge ${chargeId}. Reason: ${dispute.reason ?? "unknown"}.`,
+    ...(jobId ? { linked_job_id: [jobId] } : {}),
   });
 
   const client = getAirtableClient();
@@ -66,12 +55,11 @@ export async function handleDisputeCreated(event: Stripe.Event): Promise<void> {
   }
 
   const job = await getJobById(jobId);
-  if (job.fields.status === "disputed") {
+  if (job.fields.status === JOB_STATUS.disputed) {
     return;
   }
 
   await updateJobStatus(jobId, {
-    status: "disputed",
-    disputed_at: new Date().toISOString(),
+    status: JOB_STATUS.disputed,
   });
 }

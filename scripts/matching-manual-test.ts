@@ -9,9 +9,16 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import {
+  actionItemJobFormula,
+  driverSeedFields,
+  JOB_STATUS,
+  mechanicSeedFields,
+  TEST_CATEGORY,
+  TEST_ZIP,
+} from "./schema-test-helpers";
+
 const RUN_ID = Date.now().toString(36);
-const TEST_ZIP = "30043";
-const TEST_CATEGORY = "brakes" as const;
 const TIER3_ONLY_CATEGORY = "oil_maintenance" as const;
 const ISOLATED_ZIP = "39998";
 const TIER4_ZIP = "39999";
@@ -148,10 +155,10 @@ async function main(): Promise<void> {
   }
 
   async function seedDriver(suffix: string): Promise<string> {
-    const phone = `+1555010${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("drivers", {
-      phone,
-      name: `Manual Test Driver ${RUN_ID}-${suffix}`,
+      ...driverSeedFields(RUN_ID, suffix, {
+        name: `Manual Test Driver ${RUN_ID}-${suffix}`,
+      }),
     });
     created.drivers.push(record.id);
     return record.id;
@@ -161,19 +168,10 @@ async function main(): Promise<void> {
     suffix: string,
     fields: Record<string, unknown>,
   ): Promise<string> {
-    const phone = `+1555020${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("mechanics", {
-      status: "approved",
-      full_name: `Manual Test Mech ${RUN_ID}-${suffix}`,
-      phone,
-      availability_status: "available",
-      setup_wizard_completed_at: new Date().toISOString(),
-      service_zip_codes: [TEST_ZIP],
-      service_categories: [TEST_CATEGORY],
-      mobile_available: true,
-      mobile_repairs_confirmed: true,
-      tools_confirmed: true,
-      transport_confirmed: true,
+      ...mechanicSeedFields(RUN_ID, suffix, {
+        name: `Manual Test Mech ${RUN_ID}-${suffix}`,
+      }),
       ...fields,
     });
     created.mechanics.push(record.id);
@@ -185,15 +183,16 @@ async function main(): Promise<void> {
     fields: Record<string, unknown> = {},
   ): Promise<string> {
     const record = await client.createRecord("jobs", {
-      status: "matched",
-      matched_at: new Date().toISOString(),
+      status: JOB_STATUS.matched_awaiting_response,
+      match_tier: 1,
+      match_tier_started_at: new Date().toISOString(),
       zip_code: TEST_ZIP,
       diagnosis_category: TEST_CATEGORY,
       service_type: "mobile_repair",
       vehicle_year: 2020,
       vehicle_make: "Toyota",
       vehicle_model: "Camry",
-      driver: [driverId],
+      driver_id: [driverId],
       ...fields,
     });
     created.jobs.push(record.id);
@@ -202,9 +201,10 @@ async function main(): Promise<void> {
 
   async function resetJob(jobId: string): Promise<void> {
     await updateJobStatus(jobId, {
-      status: "matched",
-      mechanic: [],
-      matched_at: new Date().toISOString(),
+      status: JOB_STATUS.matched_awaiting_response,
+      match_tier: 1,
+      mechanic_id: [],
+      match_tier_started_at: new Date().toISOString(),
     });
   }
 
@@ -220,7 +220,7 @@ async function main(): Promise<void> {
     if (mechanicId === busyMechId) {
       await client.updateRecord("mechanics", mechanicId, {
         availability_status: "busy",
-        service_zip_codes: [ISOLATED_ZIP],
+        service_zip_codes: ISOLATED_ZIP,
       });
       return;
     }
@@ -258,9 +258,12 @@ async function main(): Promise<void> {
     assert(parseSmsCommand("bogus").kind === "unknown", "unknown");
   });
 
-  await trackResult("transitions: reject matched → matched_tier3 skip", async () => {
+  await trackResult("transitions: reject matching → service status skip", async () => {
     try {
-      assertTransition("matched", "matched_tier3");
+      assertTransition(
+        JOB_STATUS.matched_awaiting_response,
+        JOB_STATUS.diagnosing,
+      );
       throw new Error("expected InvalidJobTransitionError");
     } catch (error) {
       assert(
@@ -285,7 +288,7 @@ async function main(): Promise<void> {
   });
   const busyMechId = await seedMechanic("05", {
     availability_status: "busy",
-    service_zip_codes: [ISOLATED_ZIP],
+    service_zip_codes: ISOLATED_ZIP,
   });
   console.log(
     `  driver=${driverId}, tier1=${tier1MechId}, tier2a=${tier2MechA}, tier2b=${tier2MechB}, tier3only=${tier3OnlyMechId}, busy=${busyMechId}`,
@@ -299,8 +302,12 @@ async function main(): Promise<void> {
     const result = await beginMatching(jobId);
     const job = await getJobById(jobId);
     assert(result.tier1MechanicId === tier1MechId, "tier1 mechanic id");
-    assert(job.fields.status === "matched", "status matched");
-    assert(job.fields.mechanic?.[0] === tier1MechId, "mechanic linked");
+    assert(
+      job.fields.status === JOB_STATUS.matched_awaiting_response,
+      "status matched_awaiting_response",
+    );
+    assert(job.fields.match_tier === 1, "match_tier 1");
+    assert(job.fields.mechanic_id?.[0] === tier1MechId, "mechanic linked");
   });
 
   await trackResult("Tier 1: ACCEPT → accepted_by_mechanic", async () => {
@@ -311,8 +318,7 @@ async function main(): Promise<void> {
     const job = await getJobById(jobId);
     const mechanic = await getMechanicById(tier1MechId);
     assert(result.action === "accepted", "action accepted");
-    assert(job.fields.status === "accepted_by_mechanic", "status");
-    assert(Boolean(job.fields.accepted_at), "accepted_at set");
+    assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "status");
     assert(mechanic.fields.availability_status === "busy", "mechanic busy");
   });
 
@@ -323,8 +329,12 @@ async function main(): Promise<void> {
     const result = await handleMatchResponse(jobId, tier1MechId, "DECLINE");
     const job = await getJobById(jobId);
     assert(result.action === "declined", "action declined");
-    assert(job.fields.status === "matched_tier2", "status tier2");
-    assert(!job.fields.mechanic?.length, "mechanic cleared");
+    assert(
+      job.fields.status === JOB_STATUS.matched_awaiting_response,
+      "status matched_awaiting_response",
+    );
+    assert(job.fields.match_tier === 2, "match_tier 2");
+    assert(!job.fields.mechanic_id?.length, "mechanic cleared");
   });
 
   await trackResult("Tier 2: first YES wins", async () => {
@@ -335,8 +345,8 @@ async function main(): Promise<void> {
     const first = await handleMatchResponse(jobId, tier2MechA, "YES");
     const job = await getJobById(jobId);
     assert(first.action === "accepted", "first accepted");
-    assert(job.fields.status === "accepted_by_mechanic", "status");
-    assert(job.fields.mechanic?.[0] === tier2MechA, "winner linked");
+    assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "status");
+    assert(job.fields.mechanic_id?.[0] === tier2MechA, "winner linked");
   });
 
   await trackResult("Tier 2: second YES → already_assigned", async () => {
@@ -348,7 +358,7 @@ async function main(): Promise<void> {
     const second = await handleMatchResponse(jobId, tier2MechB, "YES");
     const job = await getJobById(jobId);
     assert(second.action === "already_assigned", "already_assigned");
-    assert(job.fields.mechanic?.[0] === tier2MechA, "first winner kept");
+    assert(job.fields.mechanic_id?.[0] === tier2MechA, "first winner kept");
   });
 
   await trackResult("Tier 3: escalate + YES from category-only mechanic", async () => {
@@ -359,11 +369,15 @@ async function main(): Promise<void> {
     await escalateToTier(jobId, 2);
     await escalateToTier(jobId, 3);
     const jobBefore = await getJobById(jobId);
-    assert(jobBefore.fields.status === "matched_tier3", "tier3 status");
+    assert(
+      jobBefore.fields.status === JOB_STATUS.matched_awaiting_response,
+      "tier3 status",
+    );
+    assert(jobBefore.fields.match_tier === 3, "match_tier 3");
     const result = await handleMatchResponse(jobId, tier3OnlyMechId, "YES");
     const job = await getJobById(jobId);
     assert(result.action === "accepted", "accepted");
-    assert(job.fields.mechanic?.[0] === tier3OnlyMechId, "tier3 mechanic");
+    assert(job.fields.mechanic_id?.[0] === tier3OnlyMechId, "tier3 mechanic");
   });
 
   await trackResult("Tier 4: no mechanics → awaiting_admin_match", async () => {
@@ -373,10 +387,10 @@ async function main(): Promise<void> {
     await escalateToTier(jobId, 3);
     await escalateToTier(jobId, 4);
     const job = await getJobById(jobId);
-    assert(job.fields.status === "awaiting_admin_match", "admin match status");
+    assert(job.fields.status === JOB_STATUS.awaiting_admin_match, "admin match status");
 
     const actionItems = await client.listRecords("action-items", {
-      filterByFormula: `FIND('${jobId}', ARRAYJOIN({job}, ','))`,
+      filterByFormula: actionItemJobFormula(jobId),
       maxRecords: 5,
     });
     assert(actionItems.records.length >= 1, "action item created");
@@ -396,8 +410,12 @@ async function main(): Promise<void> {
     const before = await getJobById(jobId);
     await escalateToTier(jobId, 2);
     const after = await getJobById(jobId);
-    assert(before.fields.status === "matched_tier2", "before tier2");
-    assert(after.fields.status === "matched_tier2", "after tier2");
+    assert(before.fields.match_tier === 2, "before tier2");
+    assert(after.fields.match_tier === 2, "after tier2");
+    assert(
+      after.fields.status === JOB_STATUS.matched_awaiting_response,
+      "status unchanged",
+    );
   });
 
   await trackResult("No Tier 1 pool → immediate Tier 2", async () => {
@@ -406,8 +424,9 @@ async function main(): Promise<void> {
     await beginMatching(jobId);
     const job = await getJobById(jobId);
     assert(
-      job.fields.status === "matched_tier2",
-      `expected matched_tier2, got ${job.fields.status}`,
+      job.fields.status === JOB_STATUS.matched_awaiting_response &&
+        job.fields.match_tier === 2,
+      `expected matched_awaiting_response tier 2, got ${job.fields.status} tier ${job.fields.match_tier}`,
     );
   });
 
@@ -417,14 +436,14 @@ async function main(): Promise<void> {
     await beginMatching(jobId);
     const mechanic = await getMechanicById(tier1MechId);
     const inbound = await handleInboundSms({
-      From: mechanic.fields.phone!,
+      From: mechanic.fields.phone_number!,
       Body: "ACCEPT",
       MessageSid: `SM${RUN_ID}accept`,
     });
     assert(inbound.action === "match_handled", "match_handled");
     assert(inbound.matchAction === "accepted", "accepted");
     const job = await getJobById(jobId);
-    assert(job.fields.status === "accepted_by_mechanic", "status");
+    assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "status");
   });
 
   await trackResult("Terminal job: escalate tier 4 no-op after accept", async () => {
@@ -434,7 +453,7 @@ async function main(): Promise<void> {
     await handleMatchResponse(jobId, tier1MechId, "ACCEPT");
     await escalateToTier(jobId, 4);
     const job = await getJobById(jobId);
-    assert(job.fields.status === "accepted_by_mechanic", "unchanged");
+    assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "unchanged");
   });
 
   const passed = results.filter((r) => r.passed).length;

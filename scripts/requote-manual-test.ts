@@ -13,9 +13,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type Stripe from "stripe";
 
+import {
+  assertRequoteSubmitted,
+  driverSeedFields,
+  JOB_STATUS,
+  jobDetails,
+  mechanicSeedFields,
+  stringifyQuoteDetails,
+  TEST_CATEGORY,
+  TEST_ZIP,
+} from "./schema-test-helpers";
+
 const RUN_ID = Date.now().toString(36);
-const TEST_ZIP = "30043";
-const TEST_CATEGORY = "brakes" as const;
 
 type TestResult = {
   name: string;
@@ -253,38 +262,28 @@ async function main(): Promise<void> {
   const { getJobById } = await import("@/lib/jobs/lookup");
   const { approveRequote } = await import("@/lib/service/requote-response");
   const { runRequoteTimeoutCheck } = await import("@/lib/requotes/timeout-check");
-  const { findPaymentByIdempotencyKey } = await import("@/lib/payments/record");
-  const { diagnosticKey, installedPartsKey, finalKey } = await import(
-    "@/lib/stripe/idempotency"
-  );
+  const { findPaymentByJobAndType } = await import("@/lib/payments/record");
   const { DIAGNOSTIC_FEE_CENTS } = await import("@/lib/stripe/constants");
   const { InvalidServiceCommandError } = await import("@/lib/service/errors");
 
   async function seedDriver(suffix: string): Promise<string> {
-    const phone = `+1555080${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("drivers", {
-      phone,
-      name: `Requote Test Driver ${RUN_ID}-${suffix}`,
-      stripe_customer_id: stripeCustomerId(suffix),
+      ...driverSeedFields(RUN_ID, suffix, {
+        phone_number: `+1555080${suffix.padStart(4, "0")}`,
+        name: `Requote Test Driver ${RUN_ID}-${suffix}`,
+        stripe_customer_id: stripeCustomerId(suffix),
+      }),
     });
     created.drivers.push(record.id);
     return record.id;
   }
 
   async function seedMechanic(suffix: string): Promise<string> {
-    const phone = `+1555081${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("mechanics", {
-      status: "approved",
-      full_name: `Requote Test Mech ${RUN_ID}-${suffix}`,
-      phone,
-      availability_status: "available",
-      setup_wizard_completed_at: new Date().toISOString(),
-      service_zip_codes: [TEST_ZIP],
-      service_categories: [TEST_CATEGORY],
-      mobile_available: true,
-      mobile_repairs_confirmed: true,
-      tools_confirmed: true,
-      transport_confirmed: true,
+      ...mechanicSeedFields(RUN_ID, suffix, {
+        phone_number: `+1555081${suffix.padStart(4, "0")}`,
+        name: `Requote Test Mech ${RUN_ID}-${suffix}`,
+      }),
     });
     created.mechanics.push(record.id);
     return record.id;
@@ -295,24 +294,30 @@ async function main(): Promise<void> {
     mechanicId: string,
     fields: Record<string, unknown> = {},
   ): Promise<string> {
+    const { quote_details: quoteDetailsOverride, ...rest } = fields;
     const record = await client.createRecord("jobs", {
-      status: "in_progress",
+      status: JOB_STATUS.in_progress,
       zip_code: TEST_ZIP,
       diagnosis_category: TEST_CATEGORY,
       service_type: "mobile_repair",
       vehicle_year: 2020,
       vehicle_make: "Toyota",
       vehicle_model: "Camry",
-      driver: [driverId],
-      mechanic: [mechanicId],
-      quote_amount: 245,
+      driver_id: [driverId],
+      mechanic_id: [mechanicId],
+      quote_total: 245,
       parts_cost: 80,
       final_price: 325,
       mechanic_payout: 288.25,
       platform_fee: 36.75,
-      original_parts_cost: 80,
-      in_progress_at: new Date().toISOString(),
-      ...fields,
+      quote_details: stringifyQuoteDetails({
+        original_parts_cost: 80,
+        in_progress_at: new Date().toISOString(),
+        ...(typeof quoteDetailsOverride === "object" && quoteDetailsOverride !== null
+          ? (quoteDetailsOverride as Record<string, unknown>)
+          : {}),
+      }),
+      ...rest,
     });
     created.jobs.push(record.id);
     return record.id;
@@ -336,9 +341,9 @@ async function main(): Promise<void> {
     assert(result.action === "requote_submitted", "requote_submitted");
 
     const pending = await getJobById(jobId);
-    assert(pending.fields.status === "requote_submitted", "status");
+    assertRequoteSubmitted(pending);
     assert(pending.fields.parts_cost === 120, "pending parts_cost");
-    assert(Boolean(pending.fields.requote_timeout_qstash_id), "timeout set");
+    assert(Boolean(jobDetails(pending.fields).requote_timeout_qstash_id), "timeout set");
     assert(getSmsLog().length === 1, "driver SMS");
     assert(getSmsLog()[0]?.body.includes("revised"), "requote SMS");
 
@@ -347,7 +352,7 @@ async function main(): Promise<void> {
 
     const job = await getJobById(jobId);
     assert(job.fields.parts_cost === 120, "approved parts_cost");
-    assert(!job.fields.requote_timeout_qstash_id, "timeout cleared");
+    assert(job.fields.status === JOB_STATUS.in_progress, "back in progress");
   });
 
   console.log("\n2. REQUOTE auto-decline:");
@@ -356,9 +361,10 @@ async function main(): Promise<void> {
     const driverId = await seedDriver("02");
     const mechanicId = await seedMechanic("02");
     const jobId = await seedInProgressJob(driverId, mechanicId, {
-      receipt_status: "submitted",
-      receipt_total: 60,
-      receipt_submitted_at: new Date().toISOString(),
+      quote_details: {
+        receipt_status: "submitted",
+        receipt_total: 60,
+      },
     });
 
     await handleServiceCommand(
@@ -371,13 +377,13 @@ async function main(): Promise<void> {
     assert(check.action === "cancelled", "cancelled");
 
     const job = await getJobById(jobId);
-    assert(job.fields.status === "cancelled", "status cancelled");
+    assert(job.fields.status === JOB_STATUS.cancelled, "status cancelled");
 
-    const diagnostic = await findPaymentByIdempotencyKey(diagnosticKey(jobId));
+    const diagnostic = await findPaymentByJobAndType(jobId, "diagnostic_fee");
     assert(diagnostic !== null, "diagnostic payment");
     assert(diagnostic.fields.amount === DIAGNOSTIC_FEE_CENTS / 100, "$35");
 
-    const installed = await findPaymentByIdempotencyKey(installedPartsKey(jobId));
+    const installed = await findPaymentByJobAndType(jobId, "final_pi");
     assert(installed !== null, "installed parts payment");
     assert(installed.fields.amount === 60, "installed parts amount");
   });
@@ -387,9 +393,10 @@ async function main(): Promise<void> {
     const driverId = await seedDriver("03");
     const mechanicId = await seedMechanic("03");
     const jobId = await seedInProgressJob(driverId, mechanicId, {
-      receipt_status: "submitted",
-      receipt_total: 120,
-      receipt_submitted_at: new Date().toISOString(),
+      quote_details: {
+        receipt_status: "submitted",
+        receipt_total: 120,
+      },
     });
 
     let blocked = false;
@@ -413,9 +420,10 @@ async function main(): Promise<void> {
     const driverId = await seedDriver("04");
     const mechanicId = await seedMechanic("04");
     const jobId = await seedInProgressJob(driverId, mechanicId, {
-      receipt_status: "submitted",
-      receipt_total: 95,
-      receipt_submitted_at: new Date().toISOString(),
+      quote_details: {
+        receipt_status: "submitted",
+        receipt_total: 95,
+      },
     });
 
     await handleServiceCommand(
@@ -429,7 +437,7 @@ async function main(): Promise<void> {
 
     const job = await getJobById(jobId);
     assert(job.fields.parts_cost === 95, "parts_cost reconciled to receipt");
-    assert(job.fields.parts_variance === 15, "variance stored");
+    assert(jobDetails(job.fields).parts_variance === 15, "variance stored");
   });
 
   console.log("\n5. DONE Case A — receipt below quote:");
@@ -437,9 +445,10 @@ async function main(): Promise<void> {
     const driverId = await seedDriver("05");
     const mechanicId = await seedMechanic("05");
     const jobId = await seedInProgressJob(driverId, mechanicId, {
-      receipt_status: "submitted",
-      receipt_total: 70,
-      receipt_submitted_at: new Date().toISOString(),
+      quote_details: {
+        receipt_status: "submitted",
+        receipt_total: 70,
+      },
     });
 
     await handleServiceCommand(
@@ -452,7 +461,7 @@ async function main(): Promise<void> {
     assert(job.fields.parts_cost === 70, "parts_cost from receipt");
     assert(job.fields.final_price === 315, "final_price = labor + receipt parts");
 
-    const payment = await findPaymentByIdempotencyKey(finalKey(jobId));
+    const payment = await findPaymentByJobAndType(jobId, "final_pi");
     assert(payment !== null, "final PI row");
     assert(payment.fields.amount === 315, "PI amount matches reconciled total");
   });

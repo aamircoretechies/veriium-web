@@ -1,6 +1,8 @@
 import { getDriverById } from "@/lib/drivers/lookup";
 import { scheduleDisputeReminders } from "@/lib/disputes/schedule";
 import { getJobById } from "@/lib/jobs/lookup";
+import { mergeQuoteDetails } from "@/lib/jobs/quote-details";
+import { JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { reconcilePartsAtDone } from "@/lib/parts/reconcile";
 import { createFinalPaymentIntent } from "@/lib/payments/final-intent";
@@ -20,7 +22,7 @@ async function notifyDriverDone(
   partsVariance?: number,
 ): Promise<void> {
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     return;
   }
@@ -28,7 +30,7 @@ async function notifyDriverDone(
   try {
     const driver = await getDriverById(driverId);
     await sendSms(
-      driver.fields.phone,
+      driver.fields.phone_number,
       serviceDoneDriver({ finalPrice, partsVariance }),
     );
   } catch (error) {
@@ -39,10 +41,6 @@ async function notifyDriverDone(
   }
 }
 
-/**
- * DONE $X PARTS $Y — set final price + payout; create final PI;
- * → `completed_pending_confirmation`; SMS driver; schedule dispute reminders.
- */
 export async function handleDone(
   jobId: string,
   mechanicId: string,
@@ -51,28 +49,31 @@ export async function handleDone(
   const job = await getJobById(jobId);
   assertMechanicAssigned(job, mechanicId);
 
-  if (job.fields.status !== "in_progress") {
-    throw new InvalidServiceCommandError("DONE", job.fields.status);
+  if (job.fields.status !== JOB_STATUS.in_progress) {
+    throw new InvalidServiceCommandError(
+      "DONE",
+      jobStatusOr(job.fields.status),
+    );
   }
 
   const parsed = parseQuoteLine(remainder);
 
   const reconciliation = reconcilePartsAtDone({
     parts_cost: job.fields.parts_cost,
-    receipt_total: job.fields.receipt_total,
-    on_hand: job.fields.on_hand,
+    quote_parts_on_hand: job.fields.quote_parts_on_hand,
+    quote_details: job.fields.quote_details,
   });
 
   if (!reconciliation.allowed) {
     if (reconciliation.blockReason === "receipt_total_missing") {
       throw new InvalidServiceCommandError(
         "DONE (receipt total required)",
-        job.fields.status,
+        jobStatusOr(job.fields.status),
       );
     }
     throw new InvalidServiceCommandError(
       "DONE (requote required — receipt exceeds parts tolerance)",
-      job.fields.status,
+      jobStatusOr(job.fields.status),
     );
   }
 
@@ -82,19 +83,24 @@ export async function handleDone(
   );
 
   await updateJobStatus(jobId, {
-    quote_amount: parsed.quoteAmount,
+    quote_total: parsed.quoteAmount,
     parts_cost: reconciliation.finalPartsCost,
     final_price: payout.finalPrice,
     mechanic_payout: payout.mechanicPayout,
     platform_fee: payout.platformFee,
-    parts_variance: reconciliation.variance,
+    quote_details: mergeQuoteDetails(job.fields.quote_details, {
+      parts_variance: reconciliation.variance,
+    }),
   });
 
   await createFinalPaymentIntent(jobId);
 
   const updated = await updateJobStatus(jobId, {
-    status: "completed_pending_confirmation",
-    payout_held: true,
+    status: JOB_STATUS.completed_pending_confirmation,
+    quote_details: mergeQuoteDetails(job.fields.quote_details, {
+      payout_held: true,
+      parts_variance: reconciliation.variance,
+    }),
   });
 
   await notifyDriverDone(
@@ -106,7 +112,7 @@ export async function handleDone(
 
   return {
     jobId,
-    status: updated.fields.status,
+    status: updated.fields.status ?? "",
     action: "completed_pending_confirmation",
   };
 }

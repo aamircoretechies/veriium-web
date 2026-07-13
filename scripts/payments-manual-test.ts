@@ -52,9 +52,20 @@ import { resolve } from "node:path";
 import type Stripe from "stripe";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 
+import {
+  actionItemJobFormula,
+  countPaymentsByJobAndType,
+  driverSeedFields,
+  JOB_STATUS,
+  mechanicSeedFields,
+  parseQuoteDetails,
+  stringifyQuoteDetails,
+  TEST_CATEGORY,
+  TEST_ZIP,
+  ACTION_ITEM_TYPE,
+} from "./schema-test-helpers";
+
 const RUN_ID = Date.now().toString(36);
-const TEST_ZIP = "30043";
-const TEST_CATEGORY = "brakes" as const;
 
 type TestResult = {
   name: string;
@@ -503,7 +514,7 @@ async function main(): Promise<void> {
   const { handlePaymentIntentEvent } = await import(
     "@/lib/payments/webhooks/payment-intent"
   );
-  const { findPaymentByIdempotencyKey } = await import("@/lib/payments/record");
+  const { findPaymentByJobAndType } = await import("@/lib/payments/record");
   const { dispatchStripeWebhook } = await import("@/lib/payments/webhooks/dispatch");
   const { getJobById } = await import("@/lib/jobs/lookup");
   const { getDriverById } = await import("@/lib/drivers/lookup");
@@ -530,29 +541,22 @@ async function main(): Promise<void> {
   }
 
   async function seedDriver(suffix: string): Promise<string> {
-    const phone = `+1555030${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("drivers", {
-      phone,
-      name: `Payments Test Driver ${RUN_ID}-${suffix}`,
+      ...driverSeedFields(RUN_ID, suffix, {
+        phone_number: `+1555030${suffix.padStart(4, "0")}`,
+        name: `Payments Test Driver ${RUN_ID}-${suffix}`,
+      }),
     });
     created.drivers.push(record.id);
     return record.id;
   }
 
   async function seedMechanic(): Promise<string> {
-    const phone = `+1555040${RUN_ID.slice(-4).padStart(4, "0")}`;
     const record = await client.createRecord("mechanics", {
-      status: "approved",
-      full_name: `Payments Test Mech ${RUN_ID}`,
-      phone,
-      availability_status: "available",
-      setup_wizard_completed_at: new Date().toISOString(),
-      service_zip_codes: [TEST_ZIP],
-      service_categories: [TEST_CATEGORY],
-      mobile_available: true,
-      mobile_repairs_confirmed: true,
-      tools_confirmed: true,
-      transport_confirmed: true,
+      ...mechanicSeedFields(RUN_ID, RUN_ID.slice(-4), {
+        phone_number: `+1555040${RUN_ID.slice(-4).padStart(4, "0")}`,
+        name: `Payments Test Mech ${RUN_ID}`,
+      }),
     });
     created.mechanics.push(record.id);
     return record.id;
@@ -563,32 +567,18 @@ async function main(): Promise<void> {
     fields: Record<string, unknown> = {},
   ): Promise<string> {
     const record = await client.createRecord("jobs", {
-      status: "draft",
+      status: JOB_STATUS.draft,
       zip_code: TEST_ZIP,
       diagnosis_category: TEST_CATEGORY,
       service_type: "mobile_repair",
       vehicle_year: 2020,
       vehicle_make: "Toyota",
       vehicle_model: "Camry",
-      driver: [driverId],
+      driver_id: [driverId],
       ...fields,
     });
     created.jobs.push(record.id);
     return record.id;
-  }
-
-  async function countPaymentsByKey(key: string): Promise<number> {
-    const formula = `{idempotency_key} = '${key.replace(/'/g, "\\'")}'`;
-    const response = await client.listRecords("payments", {
-      filterByFormula: formula,
-      maxRecords: 10,
-    });
-    for (const row of response.records) {
-      if (!created.payments.includes(row.id)) {
-        created.payments.push(row.id);
-      }
-    }
-    return response.records.length;
   }
 
   console.log(`\n[payments-manual-test] run=${RUN_ID}\n`);
@@ -610,7 +600,9 @@ async function main(): Promise<void> {
 
   await trackResult("errors: JobNotPayableError for non-draft job", async () => {
     const driverId = await seedDriver("01");
-    const jobId = await seedJob(driverId, { status: "matched" });
+    const jobId = await seedJob(driverId, {
+      status: JOB_STATUS.matched_awaiting_response,
+    });
     try {
       await createSetupIntentForJob(jobId);
       throw new Error("expected JobNotPayableError");
@@ -637,14 +629,13 @@ async function main(): Promise<void> {
 
     assert(Boolean(result.clientSecret), "clientSecret");
     assert(Boolean(result.setupIntentId), "setupIntentId");
-    assert(job.fields.status === "matched_awaiting_payment", "status");
-    assert(Boolean(job.fields.cancellation_policy_accepted_at), "policy timestamp");
-    assert(Boolean(job.fields.payment_setup_at), "payment_setup_at");
+    assert(job.fields.status === JOB_STATUS.matched_awaiting_payment, "status");
+    assert(Boolean(job.fields.policy_disclosed_at), "policy timestamp");
 
-    const payment = await findPaymentByIdempotencyKey(setupKey(jobId));
+    const payment = await findPaymentByJobAndType(jobId, "setup_intent");
     assert(payment !== null, "payment row");
-    assert(payment.fields.type === "setup", "type setup");
-    assert(payment.fields.status === "pending", "status pending");
+    assert(payment.fields.type === "setup_intent", "type setup_intent");
+    assert(payment.fields.status === "requires_payment_method", "status pending");
     assert(
       payment.fields.stripe_setup_intent_id === result.setupIntentId,
       "setup intent id",
@@ -661,7 +652,7 @@ async function main(): Promise<void> {
 
     assert(first.setupIntentId === second.setupIntentId, "same setupIntentId");
     assert(first.clientSecret === second.clientSecret, "same clientSecret");
-    assert((await countPaymentsByKey(setupKey(reusableJobId))) === 1, "one payment row");
+    assert((await countPaymentsByJobAndType(client, reusableJobId, "setup_intent")) === 1, "one payment row");
     reusableSetupIntentId = first.setupIntentId;
   });
 
@@ -686,10 +677,10 @@ async function main(): Promise<void> {
     const result = await completeSetup(setupIntent);
     const job = await getJobById(reusableJobId);
     const driver = await getDriverById(setupDriverId);
-    const payment = await findPaymentByIdempotencyKey(setupKey(reusableJobId));
+    const payment = await findPaymentByJobAndType(reusableJobId, "setup_intent");
 
     assert(result.jobId === reusableJobId, "jobId");
-    assert(job.fields.status === "matched", "matched status");
+    assert(job.fields.status === JOB_STATUS.matched_awaiting_response, "matched status");
     assert(Boolean(driver.fields.stripe_customer_id), "driver stripe_customer_id");
     assert(payment?.fields.status === "succeeded", "payment succeeded");
   });
@@ -702,7 +693,7 @@ async function main(): Promise<void> {
     const first = await completeSetup(setupIntent);
     const second = await completeSetup(setupIntent);
     assert(first.alreadyCompleted === false || second.alreadyCompleted === true, "replay");
-    assert((await countPaymentsByKey(setupKey(reusableJobId))) === 1, "still one payment row");
+    assert((await countPaymentsByJobAndType(client, reusableJobId, "setup_intent")) === 1, "still one payment row");
   });
 
   await trackResult("webhook: setup_intent.succeeded dispatch", async () => {
@@ -723,7 +714,7 @@ async function main(): Promise<void> {
     } as unknown as Stripe.Event);
 
     const job = await getJobById(jobId);
-    assert(job.fields.status === "matched", "matched via webhook");
+    assert(job.fields.status === JOB_STATUS.matched_awaiting_response, "matched via webhook");
   });
 
   await trackResult("webhook: setup_intent.setup_failed → failed + action item", async () => {
@@ -745,11 +736,11 @@ async function main(): Promise<void> {
       data: { object: failedIntent },
     } as unknown as Stripe.Event);
 
-    const payment = await findPaymentByIdempotencyKey(setupKey(jobId));
-    assert(payment?.fields.status === "failed", "payment failed");
+    const payment = await findPaymentByJobAndType(jobId, "setup_intent");
+    assert(payment?.fields.status === "canceled", "payment canceled");
 
     const actionItems = await client.listRecords("action-items", {
-      filterByFormula: `FIND('${jobId}', ARRAYJOIN({job}, ','))`,
+      filterByFormula: actionItemJobFormula(jobId),
       maxRecords: 5,
     });
     assert(actionItems.records.length >= 1, "action item created");
@@ -777,7 +768,7 @@ async function main(): Promise<void> {
     await completeSetup(setupIntent);
     await client.updateRecord("jobs", piJobId, {
       final_price: 199.99,
-      status: "accepted_by_mechanic",
+      status: JOB_STATUS.accepted_by_mechanic,
     });
   });
 
@@ -787,9 +778,9 @@ async function main(): Promise<void> {
 
     assert(first.paymentIntentId === second.paymentIntentId, "same PI");
     assert(first.status === "succeeded", "succeeded");
-    assert((await countPaymentsByKey(diagnosticKey(piJobId))) === 1, "one row");
+    assert((await countPaymentsByJobAndType(client, piJobId, "diagnostic_fee")) === 1, "one row");
 
-    const payment = await findPaymentByIdempotencyKey(diagnosticKey(piJobId));
+    const payment = await findPaymentByJobAndType(piJobId, "diagnostic_fee");
     assert(payment?.fields.type === "diagnostic_fee", "type");
     assert(payment?.fields.amount === DIAGNOSTIC_FEE_CENTS / 100, "amount $35");
   });
@@ -800,9 +791,9 @@ async function main(): Promise<void> {
 
     assert(first.paymentIntentId === second.paymentIntentId, "same PI");
     assert(first.status === "succeeded", "succeeded");
-    assert((await countPaymentsByKey(cancelKey(piJobId))) === 1, "one row");
+    assert((await countPaymentsByJobAndType(client, piJobId, "cancellation_fee")) === 1, "one row");
 
-    const payment = await findPaymentByIdempotencyKey(cancelKey(piJobId));
+    const payment = await findPaymentByJobAndType(piJobId, "cancellation_fee");
     assert(payment?.fields.type === "cancellation_fee", "type");
     assert(payment?.fields.amount === CANCELLATION_FEE_CENTS / 100, "amount $50");
   });
@@ -814,10 +805,10 @@ async function main(): Promise<void> {
     assert(first.paymentIntentId === second.paymentIntentId, "same PI");
     assert(first.status === "requires_capture", "requires_capture");
     assert(first.amountCents === 19999, "amount cents");
-    assert((await countPaymentsByKey(finalKey(piJobId))) === 1, "one row");
+    assert((await countPaymentsByJobAndType(client, piJobId, "final_pi")) === 1, "one row");
 
-    const payment = await findPaymentByIdempotencyKey(finalKey(piJobId));
-    assert(payment?.fields.type === "final", "type");
+    const payment = await findPaymentByJobAndType(piJobId, "final_pi");
+    assert(payment?.fields.type === "final_pi", "type");
   });
 
   await trackResult("createTipPaymentLink: URL + idempotent replay", async () => {
@@ -826,9 +817,9 @@ async function main(): Promise<void> {
 
     assert(first.url === second.url, "same URL");
     assert(Boolean(first.url), "url present");
-    assert((await countPaymentsByKey(tipKey(piJobId))) === 1, "one row");
+    assert((await countPaymentsByJobAndType(client, piJobId, "tip")) === 1, "one row");
 
-    const payment = await findPaymentByIdempotencyKey(tipKey(piJobId));
+    const payment = await findPaymentByJobAndType(piJobId, "tip");
     assert(payment?.fields.type === "tip", "type tip");
     assert(payment?.fields.amount === 15, "amount");
   });
@@ -877,9 +868,9 @@ async function main(): Promise<void> {
 
     const driverId = await seedDriver("07");
     const jobId = await seedJob(driverId, {
-      status: "completed_pending_confirmation",
+      status: JOB_STATUS.completed_pending_confirmation,
       final_price: 249.5,
-      payout_held: true,
+      quote_details: stringifyQuoteDetails({ payout_held: true }),
     });
 
     const piId = nextMockId(stripeMock.state, "pi");
@@ -889,19 +880,17 @@ async function main(): Promise<void> {
       amount: 24950,
       currency: "usd",
       status: "requires_payment_method",
-      metadata: { jobId, paymentType: "final" },
+      metadata: { jobId, paymentType: "final_pi" },
       last_payment_error: { message: "Your card was declined." },
     } as unknown as Stripe.PaymentIntent;
     stripeMock.state.paymentIntents.set(piId, failedIntent);
 
     await client.createRecord("payments", {
-      type: "final",
+      type: "final_pi",
       amount: 249.5,
-      status: "pending",
-      idempotency_key: finalKey(jobId),
+      status: "requires_payment_method",
       stripe_payment_intent_id: piId,
-      job: [jobId],
-      driver: [driverId],
+      job_id: [jobId],
     });
 
     await handlePaymentIntentEvent({
@@ -912,15 +901,15 @@ async function main(): Promise<void> {
     } as unknown as Stripe.Event);
 
     const job = await getJobById(jobId);
-    assert(job.fields.payout_held === true, "payout_held");
+    assert(parseQuoteDetails(job.fields.quote_details).payout_held === true, "payout_held");
 
     const actionItems = await client.listRecords<ActionItemFields>("action-items", {
-      filterByFormula: `AND({type} = 'payment_failed', FIND('${jobId}', ARRAYJOIN({job}, ',')))`,
+      filterByFormula: actionItemJobFormula(jobId, ACTION_ITEM_TYPE.FAILED_DIAGNOSTIC_FEE),
       maxRecords: 5,
     });
     assert(actionItems.records.length >= 1, "payment_failed action item");
-    const notes = String(actionItems.records[0]?.fields.notes ?? "");
-    assert(notes.includes("Recovery link:"), "recovery URL in notes");
+    const description = String(actionItems.records[0]?.fields.description ?? "");
+    assert(description.includes("Recovery link:"), "recovery URL in description");
     for (const row of actionItems.records) {
       if (!created.actionItems.includes(row.id)) {
         created.actionItems.push(row.id);
@@ -930,7 +919,7 @@ async function main(): Promise<void> {
     const recovery = await createRecoveryPaymentLink(jobId);
     const recovery2 = await createRecoveryPaymentLink(jobId);
     assert(recovery.url === recovery2.url, "recovery link idempotent");
-    assert((await countPaymentsByKey(recoveryKey(jobId))) === 1, "one recovery row");
+    assert((await countPaymentsByJobAndType(client, jobId, "final_pi")) === 1, "one recovery row");
   });
 
   await trackResult("M7: diagnostic fail → schedule retry + worker runs once", async () => {
@@ -939,11 +928,11 @@ async function main(): Promise<void> {
     }
 
     const driverId = await seedDriver("08");
-    let jobId = await seedJob(driverId, { status: "draft" });
+    let jobId = await seedJob(driverId, { status: JOB_STATUS.draft });
     const { setupIntentId } = await createSetupIntentForJob(jobId);
     const setupIntent = stripeMock.succeedSetupIntent(setupIntentId);
     await completeSetup(setupIntent);
-    await client.updateRecord("jobs", jobId, { status: "cancelled" });
+    await client.updateRecord("jobs", jobId, { status: JOB_STATUS.cancelled });
 
     const piId = nextMockId(stripeMock.state, "pi");
     const failedIntent = {
@@ -962,11 +951,9 @@ async function main(): Promise<void> {
     const paymentRecord = await client.createRecord("payments", {
       type: "diagnostic_fee",
       amount: DIAGNOSTIC_FEE_CENTS / 100,
-      status: "failed",
-      idempotency_key: diagnosticKey(jobId),
+      status: "requires_payment_method",
       stripe_payment_intent_id: piId,
-      job: [jobId],
-      driver: [driverId],
+      job_id: [jobId],
     });
     created.payments.push(paymentRecord.id);
 
@@ -979,15 +966,15 @@ async function main(): Promise<void> {
 
     let job = await getJobById(jobId);
     assert(
-      Boolean(job.fields.payment_retry_qstash_id?.trim()),
+      Boolean(parseQuoteDetails(job.fields.quote_details).payment_retry_qstash_id?.trim()),
       "payment_retry_qstash_id scheduled",
     );
 
-    const beforeRetry = job.fields.payment_retry_qstash_id;
+    const beforeRetry = parseQuoteDetails(job.fields.quote_details).payment_retry_qstash_id;
     await schedulePaymentRetry(jobId, "diagnostic_fee");
     job = await getJobById(jobId);
     assert(
-      job.fields.payment_retry_qstash_id === beforeRetry,
+      parseQuoteDetails(job.fields.quote_details).payment_retry_qstash_id === beforeRetry,
       "retry schedule idempotent",
     );
 
@@ -995,7 +982,7 @@ async function main(): Promise<void> {
     assert(retryResult.action === "escalated", "retry escalated on decline");
 
     const escalations = await client.listRecords("action-items", {
-      filterByFormula: `AND({type} = 'payment_failed', FIND('${jobId}', ARRAYJOIN({job}, ',')))`,
+      filterByFormula: actionItemJobFormula(jobId, ACTION_ITEM_TYPE.FAILED_DIAGNOSTIC_FEE),
       maxRecords: 5,
     });
     assert(escalations.records.length >= 1, "diagnostic retry failed action item");

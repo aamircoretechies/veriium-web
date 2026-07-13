@@ -12,7 +12,7 @@ export async function markMechanicAssigned(
   const fields = updateMechanicSchema.parse({ last_assigned_at: now });
   const client = getAirtableClient();
 
-  return client.updateRecord<MechanicFields>("mechanics", mechanicId, fields, {
+  return client.updateRecord<MechanicFields>("mechanics", mechanicId, fields as Partial<MechanicFields>, {
     typecast: true,
   });
 }
@@ -31,7 +31,7 @@ export async function markMechanicAvailable(
   const record = await client.updateRecord<MechanicFields>(
     "mechanics",
     mechanicId,
-    fields,
+    fields as Partial<MechanicFields>,
     { typecast: true },
   );
 
@@ -51,7 +51,7 @@ export async function markMechanicBusy(
   });
   const client = getAirtableClient();
 
-  return client.updateRecord<MechanicFields>("mechanics", mechanicId, fields, {
+  return client.updateRecord<MechanicFields>("mechanics", mechanicId, fields as Partial<MechanicFields>, {
     typecast: true,
   });
 }

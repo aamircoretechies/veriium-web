@@ -32,31 +32,29 @@ export async function handleMechanicStatusChange(
   }
 
   const mechanic = await getMechanicById(input.recordId);
-  const phone = mechanic.fields.phone;
+  const phone = mechanic.fields.phone_number;
   const now = new Date().toISOString();
   const updates: Partial<MechanicFields> = {};
 
   switch (input.status) {
     case "under_review":
-      if (!mechanic.fields.under_review_at) {
-        updates.under_review_at = now;
-      }
+      updates.background_check_status = "pending";
       break;
     case "approved":
+      updates.approved = true;
       if (!mechanic.fields.approved_at) {
         updates.approved_at = now;
       }
+      updates.background_check_status = "cleared";
       updates.availability_status = "offline";
       break;
     case "rejected":
-      if (!mechanic.fields.rejected_at) {
-        updates.rejected_at = now;
-      }
+      updates.approved = false;
+      updates.background_check_status = "failed";
       break;
     case "suspended":
-      if (!mechanic.fields.suspended_at) {
-        updates.suspended_at = now;
-      }
+      updates.approved = false;
+      updates.availability_status = "offline";
       break;
     case "needs_more_info":
       break;

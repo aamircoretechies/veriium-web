@@ -86,13 +86,13 @@ async function notifyCancellationParties(
 ): Promise<void> {
   const job = await getJobById(jobId);
 
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (driverId) {
     try {
       const driver = await getDriverById(driverId);
-      if (driver.fields.phone) {
+      if (driver.fields.phone_number) {
         await sendSms(
-          driver.fields.phone,
+          driver.fields.phone_number,
           cancellationDriver({
             feeCharged,
             partsCharge: partsCharged ? partsChargeAmount : 0,
@@ -107,13 +107,13 @@ async function notifyCancellationParties(
     }
   }
 
-  const mechanicId = job.fields.mechanic?.[0];
+  const mechanicId = job.fields.mechanic_id?.[0];
   if (mechanicId) {
     try {
       const mechanic = await getMechanicById(mechanicId);
-      if (mechanic.fields.phone) {
+      if (mechanic.fields.phone_number) {
         await sendSms(
-          mechanic.fields.phone,
+          mechanic.fields.phone_number,
           cancellationMechanic(partsCharged),
         );
       }
@@ -134,7 +134,7 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
   const job = await getJobById(jobId);
   assertJobCancellable(jobId, job.fields.status);
 
-  const lateCancel = isLateCancellation(job.fields.appointment_window_start);
+  const lateCancel = isLateCancellation(job.fields.scheduled_time);
   let feeCharged = false;
   let partsCharged = false;
   let partsChargeAmount = 0;
@@ -153,8 +153,8 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
         jobId: job.id,
         title: "Late cancellation fee failed",
         notes: `Could not charge cancellation fee for job ${jobId}.`,
-        driver: job.fields.driver,
-        mechanic: job.fields.mechanic,
+        driver: job.fields.driver_id,
+        mechanic: job.fields.mechanic_id,
       });
     }
   }
@@ -179,8 +179,8 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
         jobId: job.id,
         title: "Cancellation parts charge failed",
         notes: `Could not charge installed parts ($${partsChargeAmount.toFixed(2)}) for job ${jobId}.`,
-        driver: job.fields.driver,
-        mechanic: job.fields.mechanic,
+        driver: job.fields.driver_id,
+        mechanic: job.fields.mechanic_id,
       });
     }
   }
@@ -194,7 +194,7 @@ export async function cancelJob(jobId: string): Promise<CancelJobResult> {
     partsChargeAmount,
   );
 
-  const mechanicId = job.fields.mechanic?.[0];
+  const mechanicId = job.fields.mechanic_id?.[0];
   if (mechanicId) {
     await markMechanicAvailable(mechanicId);
   }

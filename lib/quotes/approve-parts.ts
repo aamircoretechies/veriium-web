@@ -1,4 +1,5 @@
 import { getJobById } from "@/lib/jobs/lookup";
+import { isQuotePendingAdmin, JOB_STATUS } from "@/lib/jobs/status";
 import { updateJobStatus } from "@/lib/jobs/update";
 import type { JobStatus } from "@/types/airtable/enums";
 import { releaseQuoteToDriver } from "./release";
@@ -23,22 +24,27 @@ export type ApproveQuotePartsResult = {
   action: "quote_submitted";
 };
 
-/** Admin releases a high-parts quote to the driver (Exhibit A §3.4). */
 export async function approveQuoteParts(
   jobId: string,
 ): Promise<ApproveQuotePartsResult> {
   const job = await getJobById(jobId);
 
-  if (job.fields.status !== "quote_pending_admin") {
-    throw new InvalidQuotePartsApprovalError(jobId, job.fields.status);
+  if (!isQuotePendingAdmin(job)) {
+    throw new InvalidQuotePartsApprovalError(
+      jobId,
+      job.fields.status ?? JOB_STATUS.draft,
+    );
   }
 
-  const updated = await updateJobStatus(jobId, { status: "quote_submitted" });
+  const updated = await updateJobStatus(jobId, {
+    status: JOB_STATUS.quote_provided,
+    parts_cost_flagged: false,
+  });
   await releaseQuoteToDriver(jobId);
 
   return {
     jobId,
-    status: updated.fields.status,
+    status: updated.fields.status ?? "",
     action: "quote_submitted",
   };
 }

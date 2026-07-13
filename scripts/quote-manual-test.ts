@@ -16,9 +16,20 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type Stripe from "stripe";
 
+import {
+  ACTION_ITEM_TYPE,
+  actionItemJobFormula,
+  assertQuotePendingAdmin,
+  assertQuoteSubmitted,
+  driverSeedFields,
+  JOB_STATUS,
+  jobDetails,
+  mechanicSeedFields,
+  TEST_CATEGORY,
+  TEST_ZIP,
+} from "./schema-test-helpers";
+
 const RUN_ID = Date.now().toString(36);
-const TEST_ZIP = "30043";
-const TEST_CATEGORY = "brakes" as const;
 
 type TestResult = {
   name: string;
@@ -255,38 +266,30 @@ async function main(): Promise<void> {
   const { approveQuote } = await import("@/lib/service/quote-response");
   const { approveQuoteParts } = await import("@/lib/quotes/approve-parts");
   const { runQuoteTimeoutCheck } = await import("@/lib/quotes/timeout-check");
-  const { findPaymentByIdempotencyKey } = await import("@/lib/payments/record");
-  const { diagnosticKey } = await import("@/lib/stripe/idempotency");
+  const { findPaymentByJobAndType } = await import("@/lib/payments/record");
   const { DIAGNOSTIC_FEE_CENTS } = await import("@/lib/stripe/constants");
   const { POST: airtableJobsWebhook } = await import(
     "@/app/api/webhooks/airtable/jobs/route"
   );
 
   async function seedDriver(suffix: string): Promise<string> {
-    const phone = `+1555090${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("drivers", {
-      phone,
-      name: `Quote Test Driver ${RUN_ID}-${suffix}`,
-      stripe_customer_id: stripeCustomerId(suffix),
+      ...driverSeedFields(RUN_ID, suffix, {
+        phone_number: `+1555090${suffix.padStart(4, "0")}`,
+        name: `Quote Test Driver ${RUN_ID}-${suffix}`,
+        stripe_customer_id: stripeCustomerId(suffix),
+      }),
     });
     created.drivers.push(record.id);
     return record.id;
   }
 
   async function seedMechanic(suffix: string): Promise<string> {
-    const phone = `+1555091${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("mechanics", {
-      status: "approved",
-      full_name: `Quote Test Mech ${RUN_ID}-${suffix}`,
-      phone,
-      availability_status: "available",
-      setup_wizard_completed_at: new Date().toISOString(),
-      service_zip_codes: [TEST_ZIP],
-      service_categories: [TEST_CATEGORY],
-      mobile_available: true,
-      mobile_repairs_confirmed: true,
-      tools_confirmed: true,
-      transport_confirmed: true,
+      ...mechanicSeedFields(RUN_ID, suffix, {
+        phone_number: `+1555091${suffix.padStart(4, "0")}`,
+        name: `Quote Test Mech ${RUN_ID}-${suffix}`,
+      }),
     });
     created.mechanics.push(record.id);
     return record.id;
@@ -297,16 +300,15 @@ async function main(): Promise<void> {
     mechanicId: string,
   ): Promise<string> {
     const record = await client.createRecord("jobs", {
-      status: "diagnosing",
+      status: JOB_STATUS.diagnosing,
       zip_code: TEST_ZIP,
       diagnosis_category: TEST_CATEGORY,
       service_type: "mobile_repair",
       vehicle_year: 2020,
       vehicle_make: "Toyota",
       vehicle_model: "Camry",
-      driver: [driverId],
-      mechanic: [mechanicId],
-      diagnosing_at: new Date().toISOString(),
+      driver_id: [driverId],
+      mechanic_id: [mechanicId],
     });
     created.jobs.push(record.id);
     return record.id;
@@ -316,7 +318,7 @@ async function main(): Promise<void> {
     jobId: string,
     type: string,
   ): Promise<number> {
-    const formula = `AND(FIND('${jobId}', ARRAYJOIN({job}, ',')), {status} = 'open', {type} = '${type}')`;
+    const formula = actionItemJobFormula(jobId, type);
     const response = await client.listRecords("action-items", {
       filterByFormula: formula,
       maxRecords: 20,
@@ -346,13 +348,12 @@ async function main(): Promise<void> {
 
     assert(result.action === "quote_pending_admin", "action pending admin");
     const job = await getJobById(jobId);
-    assert(job.fields.status === "quote_pending_admin", "status");
+    assertQuotePendingAdmin(job);
     assert(job.fields.parts_cost === 600, "parts_cost");
-    assert(!job.fields.quote_submitted_at, "no quote_submitted_at");
-    assert(!job.fields.quote_timeout_qstash_id, "no timeout scheduled");
+    assert(!jobDetails(job.fields).quote_timeout_qstash_id, "no timeout scheduled");
     assert(getSmsLog().length === 0, "no driver SMS");
 
-    const actionCount = await countActionItemsForJob(jobId, "parts_flagged");
+    const actionCount = await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.PARTS_FLAGGED);
     assert(actionCount >= 1, "parts_flagged action item");
   });
 
@@ -373,9 +374,8 @@ async function main(): Promise<void> {
     assert(release.action === "quote_submitted", "released");
 
     const job = await getJobById(jobId);
-    assert(job.fields.status === "quote_submitted", "quote_submitted");
-    assert(Boolean(job.fields.quote_submitted_at), "quote_submitted_at");
-    assert(Boolean(job.fields.quote_timeout_qstash_id), "timeout scheduled");
+    assertQuoteSubmitted(job);
+    assert(Boolean(jobDetails(job.fields).quote_timeout_qstash_id), "timeout scheduled");
     assert(getSmsLog().length === 1, "driver quote SMS sent");
     assert(getSmsLog()[0]?.body.includes("APPROVE"), "quote SMS body");
   });
@@ -395,8 +395,8 @@ async function main(): Promise<void> {
 
     assert(result.action === "quote_submitted", "quote_submitted");
     const job = await getJobById(jobId);
-    assert(job.fields.status === "quote_submitted", "status");
-    assert(Boolean(job.fields.quote_timeout_qstash_id), "timeout scheduled");
+    assertQuoteSubmitted(job);
+    assert(Boolean(jobDetails(job.fields).quote_timeout_qstash_id), "timeout scheduled");
     assert(getSmsLog().length === 1, "driver SMS");
   });
 
@@ -419,7 +419,7 @@ async function main(): Promise<void> {
     const job = await getJobById(jobId);
     assert(job.fields.status === "cancelled", "status cancelled");
 
-    const payment = await findPaymentByIdempotencyKey(diagnosticKey(jobId));
+    const payment = await findPaymentByJobAndType(jobId, "diagnostic_fee");
     assert(payment !== null, "diagnostic payment row");
     assert(payment.fields.amount === DIAGNOSTIC_FEE_CENTS / 100, "$35 amount");
 
@@ -440,13 +440,12 @@ async function main(): Promise<void> {
     );
 
     const before = await getJobById(jobId);
-    assert(Boolean(before.fields.quote_timeout_qstash_id), "timeout set");
+    assert(Boolean(jobDetails(before.fields).quote_timeout_qstash_id), "timeout set");
 
     await approveQuote(jobId);
 
     const after = await getJobById(jobId);
-    assert(after.fields.status === "quote_approved", "approved");
-    assert(!after.fields.quote_timeout_qstash_id, "timeout cleared");
+    assert(after.fields.status === JOB_STATUS.awaiting_customer_approval, "approved");
 
     const check = await runQuoteTimeoutCheck(jobId);
     assert(check.skipped === true, "worker skipped");
@@ -479,7 +478,7 @@ async function main(): Promise<void> {
     assert(okResponse.status === 200, "webhook 200");
 
     const job = await getJobById(jobId);
-    assert(job.fields.status === "quote_submitted", "released via webhook");
+    assertQuoteSubmitted(job);
 
     const badResponse = await airtableJobsWebhook(
       new Request("http://localhost/api/webhooks/airtable/jobs", {

@@ -9,14 +9,14 @@ async function notifyDriverPartsEta(
   minutes: number,
 ): Promise<void> {
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     return;
   }
 
   try {
     const driver = await getDriverById(driverId);
-    await sendSms(driver.fields.phone, servicePartsEta(minutes));
+    await sendSms(driver.fields.phone_number, servicePartsEta(minutes));
   } catch (error) {
     console.error(
       `[service/parts] Failed to notify driver for job ${jobId}:`,

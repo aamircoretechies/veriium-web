@@ -1,5 +1,6 @@
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { JOB_STATUS, getMatchTier } from "@/lib/jobs/status";
 import { sendSms } from "@/lib/twilio/sms";
 import { tier1Assignment } from "@/lib/twilio/templates";
 import { buildJobSmsContext } from "./job-context";
@@ -11,10 +12,6 @@ export type Tier1Result = {
   mechanicPhone: string;
 };
 
-/**
- * Pick the Tier 1 mechanic, link them to the job, and send the assignment SMS.
- * Returns null when no eligible mechanics are in the pool.
- */
 export async function runTier1(jobId: string): Promise<Tier1Result | null> {
   const job = await getJobById(jobId);
   const poolQuery = poolQueryFromJob(job);
@@ -25,19 +22,19 @@ export async function runTier1(jobId: string): Promise<Tier1Result | null> {
 
   const candidates = await listTier1Mechanics(poolQuery);
   const mechanic = candidates[0];
-  if (!mechanic?.fields.phone) {
+  if (!mechanic?.fields.phone_number) {
     return null;
   }
 
   await updateJobStatus(jobId, {
-    mechanic: [mechanic.id],
+    mechanic_id: [mechanic.id],
   });
   await markMechanicAssigned(mechanic.id);
 
   const smsContext = buildJobSmsContext(job);
   try {
     await sendSms(
-      mechanic.fields.phone,
+      mechanic.fields.phone_number,
       tier1Assignment({
         zipCode: smsContext.zipCode,
         categoryLabel: smsContext.categoryLabel,
@@ -51,6 +48,6 @@ export async function runTier1(jobId: string): Promise<Tier1Result | null> {
 
   return {
     mechanicId: mechanic.id,
-    mechanicPhone: mechanic.fields.phone,
+    mechanicPhone: mechanic.fields.phone_number,
   };
 }

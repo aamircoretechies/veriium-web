@@ -41,7 +41,7 @@ export async function confirmJob(jobId: string): Promise<ConfirmJobResult> {
 
   const updated = await updateJobStatus(jobId, { status: "confirmed" });
 
-  const mechanicId = job.fields.mechanic?.[0];
+  const mechanicId = job.fields.mechanic_id?.[0];
   if (mechanicId) {
     await markMechanicAvailable(mechanicId);
   }

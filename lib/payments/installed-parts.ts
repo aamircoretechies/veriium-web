@@ -7,9 +7,10 @@ import { STRIPE_CURRENCY } from "@/lib/stripe/constants";
 import { installedPartsKey } from "@/lib/stripe/idempotency";
 import { DriverNotLinkedError, StripeCustomerMissingError } from "./errors";
 import { resolveDefaultPaymentMethod } from "./payment-method";
+import { mapStripePaymentStatus } from "./status-map";
 import {
   createPaymentRecord,
-  findPaymentByIdempotencyKey,
+  findPaymentByJobAndType,
   updatePaymentRecord,
 } from "./record";
 
@@ -30,7 +31,7 @@ export async function createInstalledPartsIntent(
   }
 
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     throw new DriverNotLinkedError(jobId);
   }
@@ -42,7 +43,7 @@ export async function createInstalledPartsIntent(
   }
 
   const idempotencyKey = installedPartsKey(jobId);
-  const existing = await findPaymentByIdempotencyKey(idempotencyKey);
+  const existing = await findPaymentByJobAndType(jobId, "final_pi");
 
   if (existing?.fields.stripe_payment_intent_id) {
     const stripe = getStripe();
@@ -71,7 +72,8 @@ export async function createInstalledPartsIntent(
       confirm: true,
       metadata: {
         jobId,
-        paymentType: "installed_parts",
+        paymentType: "final_pi",
+        paymentAttempt: "initial",
       },
     },
     { idempotencyKey },
@@ -79,23 +81,19 @@ export async function createInstalledPartsIntent(
 
   const record = existing
     ? await updatePaymentRecord(existing.id, {
-        status: paymentIntent.status === "succeeded" ? "succeeded" : "processing",
+        status: mapStripePaymentStatus(paymentIntent.status),
         stripe_payment_intent_id: paymentIntent.id,
-        stripe_customer_id: customerId,
         amount: amountDollars,
         ...(paymentIntent.status === "succeeded"
           ? { captured_at: new Date().toISOString() }
           : {}),
       })
     : await createPaymentRecord({
-        type: "installed_parts",
+        type: "final_pi",
         amount: amountDollars,
-        status: paymentIntent.status === "succeeded" ? "succeeded" : "processing",
-        idempotency_key: idempotencyKey,
-        stripe_customer_id: customerId,
+        status: mapStripePaymentStatus(paymentIntent.status),
         stripe_payment_intent_id: paymentIntent.id,
-        job: [jobId],
-        driver: [driverId],
+        job_id: [jobId],
         ...(paymentIntent.status === "succeeded"
           ? { captured_at: new Date().toISOString() }
           : {}),

@@ -1,6 +1,5 @@
 import { getStripe } from "@/lib/stripe/client";
-import { finalKey } from "@/lib/stripe/idempotency";
-import { findPaymentByIdempotencyKey, updatePaymentRecord } from "./record";
+import { findPaymentByJobAndType, updatePaymentRecord } from "./record";
 
 export type CaptureFinalPaymentResult = {
   paymentIntentId: string;
@@ -11,7 +10,7 @@ export type CaptureFinalPaymentResult = {
 export async function captureFinalPayment(
   jobId: string,
 ): Promise<CaptureFinalPaymentResult> {
-  const existing = await findPaymentByIdempotencyKey(finalKey(jobId));
+  const existing = await findPaymentByJobAndType(jobId, "final_pi");
   const paymentIntentId = existing?.fields.stripe_payment_intent_id;
 
   if (!paymentIntentId) {

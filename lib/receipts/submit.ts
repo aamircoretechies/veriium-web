@@ -1,4 +1,5 @@
 import { getJobById } from "@/lib/jobs/lookup";
+import { mergeQuoteDetails, parseQuoteDetails } from "@/lib/jobs/quote-details";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { assertMechanicAssigned } from "@/lib/service/guards";
 import type { AirtableRecord } from "@/types/airtable/common";
@@ -24,17 +25,13 @@ export type SubmitReceiptResult = {
 };
 
 function canAcceptReceipt(job: AirtableRecord<JobFields>): boolean {
-  const status = job.fields.receipt_status;
+  const status = parseQuoteDetails(job.fields.quote_details).receipt_status;
   if (status === "submitted") {
     return false;
   }
   return status === "pending" || status === "overdue" || status === "invalid" || !status;
 }
 
-/**
- * Save a parts receipt URL on the job (Exhibit A §5.3).
- * Shared by MMS inbound and web upload.
- */
 export async function submitReceipt(
   input: SubmitReceiptInput,
 ): Promise<SubmitReceiptResult> {
@@ -52,15 +49,17 @@ export async function submitReceipt(
     throw new ReceiptAlreadySubmittedError(input.jobId);
   }
 
-  const now = new Date().toISOString();
-
-  await updateJobStatus(input.jobId, {
-    receipt_url: input.receiptUrl,
+  const current = parseQuoteDetails(job.fields.quote_details);
+  const quoteDetails = mergeQuoteDetails(job.fields.quote_details, {
     receipt_status: "submitted",
-    receipt_submitted_at: now,
-    ...(job.fields.receipt_status !== "overdue"
+    ...(current.receipt_status !== "overdue"
       ? { parts_reimbursement_forfeited: false }
       : {}),
+  });
+
+  await updateJobStatus(input.jobId, {
+    attachments: [{ url: input.receiptUrl }],
+    quote_details: quoteDetails,
   });
 
   return {

@@ -10,9 +10,10 @@ import {
 import { diagnosticKey } from "@/lib/stripe/idempotency";
 import { DriverNotLinkedError, StripeCustomerMissingError } from "./errors";
 import { resolveDefaultPaymentMethod } from "./payment-method";
+import { mapStripePaymentStatus } from "./status-map";
 import {
   createPaymentRecord,
-  findPaymentByIdempotencyKey,
+  findPaymentByJobAndType,
   updatePaymentRecord,
 } from "./record";
 
@@ -27,7 +28,7 @@ export async function createDiagnosticFeeIntent(
   jobId: string,
 ): Promise<DiagnosticFeeIntentResult> {
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     throw new DriverNotLinkedError(jobId);
   }
@@ -39,7 +40,7 @@ export async function createDiagnosticFeeIntent(
   }
 
   const idempotencyKey = diagnosticKey(jobId);
-  const existing = await findPaymentByIdempotencyKey(idempotencyKey);
+  const existing = await findPaymentByJobAndType(jobId, "diagnostic_fee");
 
   if (existing?.fields.stripe_payment_intent_id) {
     const stripe = getStripe();
@@ -68,6 +69,7 @@ export async function createDiagnosticFeeIntent(
       metadata: {
         jobId,
         paymentType: "diagnostic_fee",
+        paymentAttempt: "initial",
       },
     },
     { idempotencyKey },
@@ -75,22 +77,18 @@ export async function createDiagnosticFeeIntent(
 
   const record = existing
     ? await updatePaymentRecord(existing.id, {
-        status: paymentIntent.status === "succeeded" ? "succeeded" : "processing",
+        status: mapStripePaymentStatus(paymentIntent.status),
         stripe_payment_intent_id: paymentIntent.id,
-        stripe_customer_id: customerId,
         ...(paymentIntent.status === "succeeded"
           ? { captured_at: new Date().toISOString() }
           : {}),
       })
     : await createPaymentRecord({
-        type: "diagnostic_fee",
         amount: amountDollars,
-        status: paymentIntent.status === "succeeded" ? "succeeded" : "processing",
-        idempotency_key: idempotencyKey,
-        stripe_customer_id: customerId,
+        type: "diagnostic_fee",
+        status: mapStripePaymentStatus(paymentIntent.status),
         stripe_payment_intent_id: paymentIntent.id,
-        job: [jobId],
-        driver: [driverId],
+        job_id: [jobId],
         ...(paymentIntent.status === "succeeded"
           ? { captured_at: new Date().toISOString() }
           : {}),

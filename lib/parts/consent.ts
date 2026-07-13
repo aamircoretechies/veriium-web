@@ -1,5 +1,7 @@
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
+import { mergeQuoteDetails, parseQuoteDetails } from "@/lib/jobs/quote-details";
+import { isAwaitingPartsConsent, JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { sendSms } from "@/lib/twilio/sms";
 import { partsConsentDriver } from "@/lib/twilio/templates";
@@ -21,19 +23,21 @@ export type DriverPartsConsentResult = {
   action: "quote_approved" | "in_progress";
 };
 
-/** Send consent SMS after driver APPROVE when non-OEM/used parts are proposed (§5.8). */
 export async function sendPartsConsentSms(jobId: string): Promise<void> {
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     return;
   }
 
+  const description =
+    parseQuoteDetails(job.fields.quote_details).non_oem_parts_description;
+
   try {
     const driver = await getDriverById(driverId);
     await sendSms(
-      driver.fields.phone,
-      partsConsentDriver(job.fields.non_oem_parts_description),
+      driver.fields.phone_number,
+      partsConsentDriver(description),
     );
   } catch (error) {
     console.error(
@@ -43,35 +47,37 @@ export async function sendPartsConsentSms(jobId: string): Promise<void> {
   }
 }
 
-/**
- * Driver YES while `awaiting_parts_consent` — set consent timestamp and resume
- * the standard post-approve path (on_hand auto-start or wait for STARTED).
- */
 export async function grantPartsConsent(
   jobId: string,
 ): Promise<DriverPartsConsentResult> {
   const job = await getJobById(jobId);
 
-  if (job.fields.status !== "awaiting_parts_consent") {
-    throw new InvalidPartsConsentError(job.fields.status);
+  if (!isAwaitingPartsConsent(job)) {
+    throw new InvalidPartsConsentError(jobStatusOr(job.fields.status));
   }
 
   const now = new Date().toISOString();
-  await updateJobStatus(jobId, { non_oem_consent_at: now });
+  await updateJobStatus(jobId, {
+    quote_details: mergeQuoteDetails(job.fields.quote_details, {
+      non_oem_consent_at: now,
+    }),
+  });
 
-  if (job.fields.on_hand) {
-    const updated = await updateJobStatus(jobId, { status: "in_progress" });
+  if (job.fields.quote_parts_on_hand) {
+    const updated = await updateJobStatus(jobId, { status: JOB_STATUS.in_progress });
     return {
       jobId,
-      status: updated.fields.status,
+      status: updated.fields.status ?? "",
       action: "in_progress",
     };
   }
 
-  const updated = await updateJobStatus(jobId, { status: "quote_approved" });
+  const updated = await updateJobStatus(jobId, {
+    status: JOB_STATUS.awaiting_customer_approval,
+  });
   return {
     jobId,
-    status: updated.fields.status,
+    status: updated.fields.status ?? "",
     action: "quote_approved",
   };
 }

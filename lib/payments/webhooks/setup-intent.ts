@@ -1,13 +1,12 @@
 import type Stripe from "stripe";
 
-import { getAirtableClient } from "@/lib/airtable";
+import { createPaymentFailedActionItem } from "@/lib/action-items/create";
 import { completeSetup } from "@/lib/payments/complete-setup";
+import { getJobById } from "@/lib/jobs/lookup";
 import {
   findPaymentBySetupIntentId,
   updatePaymentRecord,
 } from "@/lib/payments/record";
-import type { ActionItemFields } from "@/types/airtable/action-items";
-import { createActionItemSchema } from "@/types/airtable/schemas";
 
 export async function handleSetupIntentEvent(event: Stripe.Event): Promise<void> {
   const setupIntent = event.data.object as Stripe.SetupIntent;
@@ -28,28 +27,29 @@ async function handleSetupFailed(setupIntent: Stripe.SetupIntent): Promise<void>
     return;
   }
 
-  if (payment.fields.status === "failed" || payment.fields.status === "succeeded") {
+  if (payment.fields.status === "canceled" || payment.fields.status === "succeeded") {
     return;
   }
 
-  await updatePaymentRecord(payment.id, { status: "failed" });
+  const jobId = setupIntent.metadata?.jobId ?? payment.fields.job_id?.[0];
+  if (!jobId) {
+    return;
+  }
 
-  const jobId = setupIntent.metadata?.jobId ?? payment.fields.job?.[0];
-  const driverId = payment.fields.driver?.[0];
+  const job = await getJobById(jobId);
+  const driverId = job.fields.driver_id?.[0];
   const errorMessage =
     setupIntent.last_setup_error?.message ?? "Card setup failed";
 
-  const actionItemFields = createActionItemSchema.parse({
-    type: "payment_failed",
-    status: "open",
-    title: "Payment setup failed",
-    notes: `SetupIntent ${setupIntent.id}: ${errorMessage}`,
-    ...(jobId ? { job: [jobId] } : {}),
-    ...(driverId ? { driver: [driverId] } : {}),
+  await updatePaymentRecord(payment.id, {
+    status: "canceled",
+    failed_at: new Date().toISOString(),
+    failure_reason: errorMessage,
   });
 
-  const client = getAirtableClient();
-  await client.createRecord<ActionItemFields>("action-items", actionItemFields, {
-    typecast: true,
+  await createPaymentFailedActionItem({
+    jobId,
+    notes: `SetupIntent ${setupIntent.id}: ${errorMessage}`,
+    driver: driverId ? [driverId] : undefined,
   });
 }

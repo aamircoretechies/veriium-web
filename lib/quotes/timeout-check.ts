@@ -1,7 +1,6 @@
 import { getJobById } from "@/lib/jobs/lookup";
-import { updateJobStatus } from "@/lib/jobs/update";
+import { isQuoteSubmitted } from "@/lib/jobs/status";
 import { declineQuote } from "@/lib/service/quote-response";
-import type { JobStatus } from "@/types/airtable/enums";
 
 export type QuoteTimeoutCheckResult = {
   jobId: string;
@@ -10,20 +9,16 @@ export type QuoteTimeoutCheckResult = {
   action?: "cancelled";
 };
 
-/**
- * QStash worker — 2h after driver quote SMS, auto-decline if still `quote_submitted` (§3.4).
- * Idempotent; skips if driver already responded.
- */
 export async function runQuoteTimeoutCheck(
   jobId: string,
 ): Promise<QuoteTimeoutCheckResult> {
   const job = await getJobById(jobId);
 
-  if (job.fields.status !== "quote_submitted") {
+  if (!isQuoteSubmitted(job)) {
     return {
       jobId,
       skipped: true,
-      reason: `status_${job.fields.status as JobStatus}`,
+      reason: `status_${job.fields.status ?? "unknown"}`,
     };
   }
 

@@ -2,8 +2,8 @@ import { getJobById } from "@/lib/jobs/lookup";
 import { getStripe } from "@/lib/stripe/client";
 import { STRIPE_CURRENCY } from "@/lib/stripe/constants";
 import { recoveryKey } from "@/lib/stripe/idempotency";
-import { DriverNotLinkedError, FinalPriceMissingError } from "./errors";
-import { createPaymentRecord, findPaymentByIdempotencyKey } from "./record";
+import { FinalPriceMissingError } from "./errors";
+import { createPaymentRecord, findPaymentByJobAndType } from "./record";
 
 export type RecoveryPaymentLinkResult = {
   url: string;
@@ -21,20 +21,15 @@ export async function createRecoveryPaymentLink(
     throw new FinalPriceMissingError(jobId);
   }
 
-  const driverId = job.fields.driver?.[0];
-  if (!driverId) {
-    throw new DriverNotLinkedError(jobId);
-  }
-
   const idempotencyKey = recoveryKey(jobId);
-  const existing = await findPaymentByIdempotencyKey(idempotencyKey);
+  const existing = await findPaymentByJobAndType(jobId, "final_pi");
   if (existing) {
     const stripe = getStripe();
     const links = await stripe.paymentLinks.list({ limit: 100 });
     const match = links.data.find(
       (link) =>
         link.metadata?.jobId === jobId &&
-        link.metadata?.paymentType === "final_recovery",
+        link.metadata?.paymentType === "final_pi",
     );
     if (match?.url) {
       return {
@@ -64,7 +59,7 @@ export async function createRecoveryPaymentLink(
       line_items: [{ price: price.id, quantity: 1 }],
       metadata: {
         jobId,
-        paymentType: "final_recovery",
+        paymentType: "final_pi",
       },
     },
     { idempotencyKey },
@@ -75,12 +70,10 @@ export async function createRecoveryPaymentLink(
   }
 
   const record = await createPaymentRecord({
-    type: "final_recovery",
+    type: "final_pi",
     amount: finalPrice,
-    status: "pending",
-    idempotency_key: idempotencyKey,
-    job: [jobId],
-    driver: [driverId],
+    status: "requires_payment_method",
+    job_id: [jobId],
   });
 
   return {

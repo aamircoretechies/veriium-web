@@ -13,9 +13,10 @@ import {
 import { resolveDefaultPaymentMethod } from "./payment-method";
 import {
   createPaymentRecord,
-  findPaymentByIdempotencyKey,
+  findPaymentByJobAndType,
   updatePaymentRecord,
 } from "./record";
+import { mapStripePaymentStatus } from "./status-map";
 
 export type FinalPaymentIntentResult = {
   paymentIntentId: string;
@@ -24,7 +25,6 @@ export type FinalPaymentIntentResult = {
   amountCents: number;
 };
 
-/** Manual-capture final charge (§5.4) — invoked on DONE in a later phase. */
 export async function createFinalPaymentIntent(
   jobId: string,
 ): Promise<FinalPaymentIntentResult> {
@@ -35,7 +35,7 @@ export async function createFinalPaymentIntent(
     throw new FinalPriceMissingError(jobId);
   }
 
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     throw new DriverNotLinkedError(jobId);
   }
@@ -46,8 +46,7 @@ export async function createFinalPaymentIntent(
     throw new StripeCustomerMissingError(driverId);
   }
 
-  const idempotencyKey = finalKey(jobId);
-  const existing = await findPaymentByIdempotencyKey(idempotencyKey);
+  const existing = await findPaymentByJobAndType(jobId, "final_pi");
 
   if (existing?.fields.stripe_payment_intent_id) {
     const stripe = getStripe();
@@ -77,28 +76,24 @@ export async function createFinalPaymentIntent(
       capture_method: "manual",
       metadata: {
         jobId,
-        paymentType: "final",
+        paymentType: "final_pi",
       },
     },
-    { idempotencyKey },
+    { idempotencyKey: finalKey(jobId) },
   );
 
   const record = existing
     ? await updatePaymentRecord(existing.id, {
-        status: mapIntentStatus(paymentIntent.status),
+        status: mapStripePaymentStatus(paymentIntent.status),
         amount: finalPrice,
         stripe_payment_intent_id: paymentIntent.id,
-        stripe_customer_id: customerId,
       })
     : await createPaymentRecord({
-        type: "final",
+        type: "final_pi",
         amount: finalPrice,
-        status: mapIntentStatus(paymentIntent.status),
-        idempotency_key: idempotencyKey,
-        stripe_customer_id: customerId,
+        status: mapStripePaymentStatus(paymentIntent.status),
         stripe_payment_intent_id: paymentIntent.id,
-        job: [jobId],
-        driver: [driverId],
+        job_id: [jobId],
       });
 
   return {
@@ -107,24 +102,4 @@ export async function createFinalPaymentIntent(
     status: paymentIntent.status,
     amountCents,
   };
-}
-
-function mapIntentStatus(
-  status: Stripe.PaymentIntent.Status,
-): "pending" | "processing" | "succeeded" | "failed" | "canceled" | "requires_action" {
-  switch (status) {
-    case "succeeded":
-      return "succeeded";
-    case "processing":
-      return "processing";
-    case "canceled":
-      return "canceled";
-    case "requires_action":
-    case "requires_confirmation":
-    case "requires_payment_method":
-    case "requires_capture":
-      return status === "requires_action" ? "requires_action" : "pending";
-    default:
-      return "failed";
-  }
 }

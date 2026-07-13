@@ -2,6 +2,7 @@ import { getEnv } from "@/config/env";
 import { AirtableError } from "@/lib/airtable";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { getJobById } from "@/lib/jobs/lookup";
+import { JOB_STATUS } from "@/lib/jobs/status";
 import { InvalidJobTransitionError } from "@/lib/jobs/transitions";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { beginMatching, JobNotMatchableError } from "@/lib/matching";
@@ -10,9 +11,9 @@ import type { JobStatus } from "@/types/airtable/enums";
 const MATCHING_DEV_SECRET_HEADER = "x-matching-dev-secret";
 
 const MATCHABLE_FROM_STATUSES: readonly JobStatus[] = [
-  "draft",
-  "matched_awaiting_payment",
-  "matched",
+  JOB_STATUS.draft,
+  JOB_STATUS.matched_awaiting_payment,
+  JOB_STATUS.matched_awaiting_response,
 ];
 
 type RouteContext = {
@@ -33,7 +34,7 @@ export async function POST(request: Request, context: RouteContext) {
     const job = await getJobById(jobId);
     const status = job.fields.status;
 
-    if (!MATCHABLE_FROM_STATUSES.includes(status)) {
+    if (!status || !MATCHABLE_FROM_STATUSES.includes(status)) {
       return jsonError(
         409,
         "job_not_matchable",
@@ -41,8 +42,16 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    if (status === "draft" || status === "matched_awaiting_payment") {
-      await updateJobStatus(jobId, { status: "matched" });
+    if (
+      status === JOB_STATUS.draft ||
+      status === JOB_STATUS.matched_awaiting_payment
+    ) {
+      const now = new Date().toISOString();
+      await updateJobStatus(jobId, {
+        status: JOB_STATUS.matched_awaiting_response,
+        match_tier: 1,
+        match_tier_started_at: now,
+      });
     }
 
     const result = await beginMatching(jobId);

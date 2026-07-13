@@ -2,7 +2,7 @@ import { getAirtableClient } from "@/lib/airtable";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
 import type { ActionItemFields } from "@/types/airtable/action-items";
-import type { JobStatus } from "@/types/airtable/enums";
+import { ACTION_ITEM_TYPE, type JobStatus } from "@/types/airtable/enums";
 import { createActionItemSchema } from "@/types/airtable/schemas";
 
 export class InvalidDriverDisputeError extends Error {
@@ -36,13 +36,12 @@ export async function disputeJob(jobId: string): Promise<DisputeJobResult> {
   const updated = await updateJobStatus(jobId, { status: "disputed" });
 
   const actionItemFields = createActionItemSchema.parse({
-    type: "dispute",
+    type: ACTION_ITEM_TYPE.OPEN_DISPUTE,
     status: "open",
-    title: "Driver disputed completed repair",
-    notes: `Driver disputed final charge for job ${jobId}.`,
-    job: [jobId],
-    driver: job.fields.driver,
-    mechanic: job.fields.mechanic,
+    description: `Driver disputed final charge for job ${jobId}.`,
+    linked_job_id: [jobId],
+    linked_driver_id: job.fields.driver_id,
+    linked_mechanic_id: job.fields.mechanic_id,
   });
 
   const client = getAirtableClient();

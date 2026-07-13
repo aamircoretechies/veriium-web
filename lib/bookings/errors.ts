@@ -13,3 +13,10 @@ export class DiagnosisNotFoundError extends Error {
     this.name = "DiagnosisNotFoundError";
   }
 }
+
+export class InvalidVehicleError extends Error {
+  constructor(message = "Invalid vehicle information.") {
+    super(message);
+    this.name = "InvalidVehicleError";
+  }
+}

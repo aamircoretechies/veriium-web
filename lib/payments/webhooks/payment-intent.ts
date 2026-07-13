@@ -6,12 +6,13 @@ import {
   createPaymentFailedActionItem,
 } from "@/lib/action-items/create";
 import { getJobById } from "@/lib/jobs/lookup";
+import { mergeQuoteDetails } from "@/lib/jobs/quote-details";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { createRecoveryPaymentLink } from "@/lib/payments/recovery-link";
 import { schedulePaymentRetry } from "@/lib/payments/schedule-retry";
 import {
   createPaymentRecord,
-  findPaymentByIdempotencyKey,
+  findPaymentByJobAndType,
   findPaymentByPaymentIntentId,
   updatePaymentRecord,
 } from "@/lib/payments/record";
@@ -21,45 +22,57 @@ import {
   DIAGNOSTIC_MECHANIC_PAYOUT,
   DIAGNOSTIC_PLATFORM_FEE,
 } from "@/lib/stripe/constants";
-import {
-  cancelKey,
-  diagnosticKey,
-  finalKey,
-  installedPartsKey,
-  partsCancelKey,
-  paymentRetryKey,
-  recoveryKey,
-  tipKey,
-} from "@/lib/stripe/idempotency";
+import { mapStripePaymentStatus } from "@/lib/payments/status-map";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { PaymentStatus, PaymentType } from "@/types/airtable/enums";
 import type { PaymentFields } from "@/types/airtable/payments";
-import type { PaymentRetryPayload } from "@/types/api/service";
 
-const PAYMENT_TYPE_VALUES = new Set<string>([
-  "final",
-  "final_recovery",
-  "cancellation_fee",
-  "diagnostic_fee",
-  "installed_parts",
-  "parts_cancellation",
-  "tip",
-]);
+function normalizePaymentType(raw: string): PaymentType | null {
+  switch (raw) {
+    case "setup":
+      return "setup_intent";
+    case "setup_intent":
+      return "setup_intent";
+    case "final":
+    case "final_pi":
+    case "final_recovery":
+    case "installed_parts":
+      return "final_pi";
+    case "parts_cancellation":
+      return "cancellation_fee";
+    case "cancellation_fee":
+      return "cancellation_fee";
+    case "diagnostic_fee":
+      return "diagnostic_fee";
+    case "tip":
+      return "tip";
+    case "refund":
+      return "refund";
+    default:
+      return null;
+  }
+}
 
 export async function handlePaymentIntentEvent(event: Stripe.Event): Promise<void> {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  const status = statusFromWebhookEvent(event.type, paymentIntent.status);
+  const status = mapStripePaymentStatus(paymentIntent.status);
 
   const payment = await upsertPaymentFromIntent(paymentIntent, status);
 
   if (event.type === "payment_intent.succeeded") {
     const paymentType = paymentIntent.metadata?.paymentType;
     const jobId = paymentIntent.metadata?.jobId;
-    if (jobId && paymentType) {
-      if (paymentType === "final" || paymentType === "final_recovery") {
-        await updateJobStatus(jobId, { payout_held: false });
+    const normalized = paymentType ? normalizePaymentType(paymentType) : null;
+    if (jobId && normalized) {
+      if (normalized === "final_pi") {
+        const job = await getJobById(jobId);
+        await updateJobStatus(jobId, {
+          quote_details: mergeQuoteDetails(job.fields.quote_details, {
+            payout_held: false,
+          }),
+        });
       }
-      await applyPayoutForPaymentType(jobId, paymentType);
+      await applyPayoutForPaymentType(jobId, normalized);
     }
     return;
   }
@@ -73,19 +86,28 @@ async function handlePaymentFailed(
   paymentIntent: Stripe.PaymentIntent,
   payment: AirtableRecord<PaymentFields>,
 ): Promise<void> {
-  const jobId = paymentIntent.metadata?.jobId ?? payment.fields.job?.[0];
-  const paymentType =
-    paymentIntent.metadata?.paymentType ?? payment.fields.type;
-  const driverId = payment.fields.driver?.[0];
   const errorMessage =
     paymentIntent.last_payment_error?.message ?? "Payment failed";
 
-  if (!jobId) {
+  const jobId = paymentIntent.metadata?.jobId ?? payment.fields.job_id?.[0];
+  const paymentTypeRaw =
+    paymentIntent.metadata?.paymentType ?? (payment.fields.type ?? undefined);
+  const paymentType =
+    typeof paymentTypeRaw === "string" ? normalizePaymentType(paymentTypeRaw) : null;
+
+  if (!jobId || !paymentType) {
     return;
   }
 
-  if (paymentType === "final") {
-    await updateJobStatus(jobId, { payout_held: true });
+  const job = await getJobById(jobId);
+  const driverId = job.fields.driver_id?.[0];
+
+  if (paymentType === "final_pi") {
+    await updateJobStatus(jobId, {
+      quote_details: mergeQuoteDetails(job.fields.quote_details, {
+        payout_held: true,
+      }),
+    });
 
     let recoveryUrl: string | undefined;
     try {
@@ -114,28 +136,22 @@ async function handlePaymentFailed(
   }
 
   if (
-    paymentType === "diagnostic_fee" ||
-    paymentType === "cancellation_fee"
+    paymentType === "diagnostic_fee" || paymentType === "cancellation_fee"
   ) {
-    const idempotencyKey = payment.fields.idempotency_key;
-    const isRetryAttempt = idempotencyKey.endsWith("-retry");
+    const isRetryAttempt = paymentIntent.metadata?.paymentAttempt === "retry";
 
     if (!isRetryAttempt) {
-      await schedulePaymentRetry(
-        jobId,
-        paymentType as PaymentRetryPayload["paymentType"],
-      );
+      await schedulePaymentRetry(jobId, paymentType);
       return;
     }
 
     if (paymentType === "cancellation_fee") {
-      const job = await getJobById(jobId);
       await createCancellationReviewActionItem({
         jobId,
         title: "Cancellation fee retry failed",
         notes: `PaymentIntent ${paymentIntent.id} (${paymentType}): ${errorMessage}`,
-        driver: job.fields.driver,
-        mechanic: job.fields.mechanic,
+        driver: job.fields.driver_id,
+        mechanic: job.fields.mechanic_id,
       });
       return;
     }
@@ -155,149 +171,51 @@ async function handlePaymentFailed(
   });
 }
 
-function statusFromWebhookEvent(
-  eventType: Stripe.Event.Type,
-  intentStatus: Stripe.PaymentIntent.Status,
-): PaymentStatus {
-  switch (eventType) {
-    case "payment_intent.succeeded":
-      return "succeeded";
-    case "payment_intent.canceled":
-      return "canceled";
-    case "payment_intent.payment_failed":
-      return "failed";
-    default:
-      return mapIntentStatus(intentStatus);
-  }
-}
-
-function mapIntentStatus(
-  status: Stripe.PaymentIntent.Status,
-): PaymentStatus {
-  switch (status) {
-    case "succeeded":
-      return "succeeded";
-    case "processing":
-      return "processing";
-    case "canceled":
-      return "canceled";
-    case "requires_action":
-      return "requires_action";
-    case "requires_confirmation":
-    case "requires_payment_method":
-    case "requires_capture":
-      return "pending";
-    default:
-      return "failed";
-  }
-}
-
-function idempotencyKeyForType(jobId: string, paymentType: string): string | null {
-  switch (paymentType) {
-    case "final":
-      return finalKey(jobId);
-    case "final_recovery":
-      return recoveryKey(jobId);
-    case "diagnostic_fee":
-      return diagnosticKey(jobId);
-    case "cancellation_fee":
-      return cancelKey(jobId);
-    case "installed_parts":
-      return installedPartsKey(jobId);
-    case "parts_cancellation":
-      return partsCancelKey(jobId);
-    case "tip":
-      return tipKey(jobId);
-    default:
-      return null;
-  }
-}
-
-function getChargeId(paymentIntent: Stripe.PaymentIntent): string | undefined {
-  const latestCharge = paymentIntent.latest_charge;
-  if (typeof latestCharge === "string") {
-    return latestCharge;
-  }
-  return latestCharge?.id;
-}
-
 async function upsertPaymentFromIntent(
   paymentIntent: Stripe.PaymentIntent,
   status: PaymentStatus,
 ): Promise<AirtableRecord<PaymentFields>> {
   const jobId = paymentIntent.metadata?.jobId;
-  const paymentType = paymentIntent.metadata?.paymentType;
+  const paymentTypeRaw = paymentIntent.metadata?.paymentType;
 
-  if (!jobId || !paymentType || !PAYMENT_TYPE_VALUES.has(paymentType)) {
+  if (!jobId || !paymentTypeRaw) {
     throw new Error("PaymentIntent is missing jobId or paymentType metadata");
+  }
+
+  const paymentType = normalizePaymentType(paymentTypeRaw);
+  if (!paymentType) {
+    throw new Error(`Unknown payment type: ${paymentTypeRaw}`);
   }
 
   let payment = await findPaymentByPaymentIntentId(paymentIntent.id);
   if (!payment) {
-    const idempotencyKey = idempotencyKeyForType(jobId, paymentType);
-    if (idempotencyKey) {
-      payment = await findPaymentByIdempotencyKey(idempotencyKey);
-    }
-    if (!payment && paymentType === "diagnostic_fee") {
-      payment = await findPaymentByIdempotencyKey(
-        paymentRetryKey(diagnosticKey(jobId)),
-      );
-    }
-    if (!payment && paymentType === "cancellation_fee") {
-      payment = await findPaymentByIdempotencyKey(
-        paymentRetryKey(cancelKey(jobId)),
-      );
-    }
+    payment = await findPaymentByJobAndType(jobId, paymentType);
   }
 
   const amountDollars = paymentIntent.amount / 100;
-  const chargeId = getChargeId(paymentIntent);
-  const customerId =
-    typeof paymentIntent.customer === "string"
-      ? paymentIntent.customer
-      : paymentIntent.customer?.id;
-
   const patch = {
     status,
     amount: amountDollars,
     stripe_payment_intent_id: paymentIntent.id,
-    ...(customerId ? { stripe_customer_id: customerId } : {}),
-    ...(chargeId ? { stripe_charge_id: chargeId } : {}),
-    ...(status === "succeeded"
-      ? { captured_at: new Date().toISOString() }
-      : {}),
+    ...(status === "succeeded" ? { captured_at: new Date().toISOString() } : {}),
   };
 
   if (payment) {
     if (
       payment.fields.status === status &&
-      (!chargeId || payment.fields.stripe_charge_id === chargeId)
+      payment.fields.stripe_payment_intent_id === paymentIntent.id
     ) {
       return payment;
     }
     return updatePaymentRecord(payment.id, patch);
   }
 
-  const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
-  const idempotencyKey = idempotencyKeyForType(jobId, paymentType);
-  if (!idempotencyKey) {
-    throw new Error(`Unknown payment type: ${paymentType}`);
-  }
-
   return createPaymentRecord({
-    type: paymentType as PaymentType,
+    type: paymentType,
     amount: amountDollars,
     status,
-    idempotency_key: idempotencyKey,
-    stripe_customer_id: customerId,
     stripe_payment_intent_id: paymentIntent.id,
-    stripe_charge_id: chargeId,
-    job: [jobId],
-    driver: driverId ? [driverId] : undefined,
-    ...(status === "succeeded"
-      ? { captured_at: new Date().toISOString() }
-      : {}),
+    job_id: [jobId],
   });
 }
 

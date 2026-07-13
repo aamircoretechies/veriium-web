@@ -15,6 +15,7 @@ const aiDiagnosisSchema = parsedDiagnosisSchema.refine(
 export type AiDiagnosisResult = {
   raw_response: string;
   parsed: ParsedDiagnosis;
+  latency_ms: number;
 };
 
 function extractJsonContent(text: string): string {
@@ -44,10 +45,14 @@ function parseDiagnosisContent(content: string): ParsedDiagnosis {
   return parsed.data;
 }
 
-async function requestOpenAiCompletion(input: string): Promise<string> {
+async function requestOpenAiCompletion(input: string): Promise<{
+  content: string;
+  latency_ms: number;
+}> {
   const env = getPhase2Env();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const startedAt = Date.now();
 
   try {
     const response = await fetch(OPENAI_CHAT_URL, {
@@ -81,7 +86,10 @@ async function requestOpenAiCompletion(input: string): Promise<string> {
       throw new AiDiagnosisError("AI provider returned an empty response.");
     }
 
-    return content;
+    return {
+      content,
+      latency_ms: Date.now() - startedAt,
+    };
   } catch (error) {
     if (error instanceof AiDiagnosisError) {
       throw error;
@@ -99,11 +107,12 @@ export async function callOpenAiDiagnosis(input: string): Promise<AiDiagnosisRes
   let lastError: AiDiagnosisError | undefined;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const raw_response = await requestOpenAiCompletion(input);
+    const { content: raw_response, latency_ms } =
+      await requestOpenAiCompletion(input);
 
     try {
       const parsed = parseDiagnosisContent(raw_response);
-      return { raw_response, parsed };
+      return { raw_response, parsed, latency_ms };
     } catch (error) {
       if (error instanceof AiDiagnosisError) {
         lastError = error;

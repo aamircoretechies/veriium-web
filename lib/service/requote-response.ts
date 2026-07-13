@@ -1,11 +1,16 @@
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
+import { mergeQuoteDetails, parseQuoteDetails } from "@/lib/jobs/quote-details";
+import {
+  isRequoteSubmitted,
+  JOB_STATUS,
+  jobStatusOr,
+} from "@/lib/jobs/status";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { createDiagnosticFeeIntent } from "@/lib/payments/diagnostic-fee";
 import { createInstalledPartsIntent } from "@/lib/payments/installed-parts";
-import { findPaymentByIdempotencyKey } from "@/lib/payments/record";
+import { findPaymentByJobAndType } from "@/lib/payments/record";
 import { cancelRequoteTimeout } from "@/lib/requotes/schedule";
-import { diagnosticKey } from "@/lib/stripe/idempotency";
 import { sendSms } from "@/lib/twilio/sms";
 import { serviceRequoteDeclinedDriver } from "@/lib/twilio/templates";
 import type { JobStatus } from "@/types/airtable/enums";
@@ -32,8 +37,8 @@ export type DriverRequoteResponseResult = {
 
 function resolveReturnStatus(
   inProgressAt: string | undefined,
-): "in_progress" | "quote_approved" {
-  return inProgressAt ? "in_progress" : "quote_approved";
+): "in_progress" | "awaiting_customer_approval" {
+  return inProgressAt ? JOB_STATUS.in_progress : JOB_STATUS.awaiting_customer_approval;
 }
 
 async function notifyDriverRequoteDeclined(
@@ -42,7 +47,7 @@ async function notifyDriverRequoteDeclined(
   diagnosticCharged: boolean,
 ): Promise<void> {
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     return;
   }
@@ -50,7 +55,7 @@ async function notifyDriverRequoteDeclined(
   try {
     const driver = await getDriverById(driverId);
     await sendSms(
-      driver.fields.phone,
+      driver.fields.phone_number,
       serviceRequoteDeclinedDriver({ installedPartsCharge, diagnosticCharged }),
     );
   } catch (error) {
@@ -61,52 +66,62 @@ async function notifyDriverRequoteDeclined(
   }
 }
 
-/** APPROVE → resume work with updated parts cost (§5.5). */
 export async function approveRequote(
   jobId: string,
 ): Promise<DriverRequoteResponseResult> {
   const job = await getJobById(jobId);
 
-  if (job.fields.status !== "requote_submitted") {
-    throw new InvalidDriverRequoteResponseError("APPROVE", job.fields.status);
+  if (!isRequoteSubmitted(job)) {
+    throw new InvalidDriverRequoteResponseError(
+      "APPROVE",
+      jobStatusOr(job.fields.status),
+    );
   }
 
   await cancelRequoteTimeout(jobId);
 
-  const returnStatus = resolveReturnStatus(job.fields.in_progress_at);
+  const details = parseQuoteDetails(job.fields.quote_details);
+  const returnStatus = resolveReturnStatus(details.in_progress_at);
   const now = new Date().toISOString();
 
   const updated = await updateJobStatus(jobId, {
     status: returnStatus,
-    requote_approved_at: now,
+    quote_details: mergeQuoteDetails(job.fields.quote_details, {
+      requote: false,
+      requote_approved_at: now,
+    }),
   });
 
   return {
     jobId,
-    status: updated.fields.status,
-    action: returnStatus,
+    status: updated.fields.status ?? "",
+    action: returnStatus === JOB_STATUS.in_progress ? "in_progress" : "quote_approved",
   };
 }
 
-/** DECLINE → charge installed parts + diagnostic if needed → cancelled (§5.5). */
 export async function declineRequote(
   jobId: string,
 ): Promise<DriverRequoteResponseResult> {
   const job = await getJobById(jobId);
 
-  if (job.fields.status !== "requote_submitted") {
-    throw new InvalidDriverRequoteResponseError("DECLINE", job.fields.status);
+  if (!isRequoteSubmitted(job)) {
+    throw new InvalidDriverRequoteResponseError(
+      "DECLINE",
+      jobStatusOr(job.fields.status),
+    );
   }
 
   await cancelRequoteTimeout(jobId);
 
+  const details = parseQuoteDetails(job.fields.quote_details);
   const installedPartsCharge =
-    job.fields.receipt_status === "submitted"
-      ? (job.fields.receipt_total ?? 0)
+    details.receipt_status === "submitted"
+      ? (details.receipt_total ?? 0)
       : 0;
 
-  const existingDiagnostic = await findPaymentByIdempotencyKey(
-    diagnosticKey(jobId),
+  const existingDiagnostic = await findPaymentByJobAndType(
+    jobId,
+    "diagnostic_fee",
   );
   const diagnosticAlreadyCharged =
     existingDiagnostic?.fields.status === "succeeded";
@@ -121,17 +136,20 @@ export async function declineRequote(
 
   const onHandNote =
     "Unused parts retained by mechanic as ON_HAND inventory per Veriium policy.";
-  const existingDetails = job.fields.additional_details?.trim();
+  const existingDetails = job.fields.issue_text?.trim();
   const additionalDetails = existingDetails
     ? `${existingDetails}\n\n${onHandNote}`
     : onHandNote;
 
   const now = new Date().toISOString();
   const updated = await updateJobStatus(jobId, {
-    status: "cancelled",
-    requote_declined_at: now,
-    additional_details: additionalDetails,
-    on_hand: true,
+    status: JOB_STATUS.cancelled,
+    issue_text: additionalDetails,
+    quote_parts_on_hand: true,
+    quote_details: mergeQuoteDetails(job.fields.quote_details, {
+      requote_declined_at: now,
+      requote: false,
+    }),
   });
 
   await notifyDriverRequoteDeclined(
@@ -142,7 +160,7 @@ export async function declineRequote(
 
   return {
     jobId,
-    status: updated.fields.status,
+    status: updated.fields.status ?? "",
     action: "cancelled",
   };
 }

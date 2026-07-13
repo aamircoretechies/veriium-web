@@ -3,6 +3,7 @@ import type { BookingRequest, BookingVehicle } from "@/types/api/booking";
 import type { ServiceType } from "@/types/airtable/enums";
 import type { JobFields } from "@/types/airtable/jobs";
 import { OutOfServiceAreaError } from "./errors";
+import type { ResolvedVehicle } from "./resolve-vehicle";
 
 const GWINNETT_ZIP_SET = new Set<string>(GWINNETT_ZIP_CODES);
 
@@ -15,6 +16,7 @@ export type ValidatedBookingIntake = {
   serviceType: ServiceType;
   vehicle?: BookingVehicle;
   additionalDetails?: string;
+  scheduledTime?: string;
   verificationCode: string;
 };
 
@@ -24,7 +26,8 @@ export type JobIntakeFields = Pick<
   | "vehicle_make"
   | "vehicle_model"
   | "vin"
-  | "additional_details"
+  | "issue_text"
+  | "scheduled_time"
 >;
 
 /** Map UI `onsite` to Airtable `mobile_repair`. */
@@ -89,30 +92,39 @@ export function validateBookingIntake(
     serviceType: normalizeServiceType(request.serviceType),
     vehicle: normalizeVehicle(request.vehicle),
     additionalDetails: request.additionalDetails?.trim() || undefined,
+    scheduledTime: request.scheduledTime,
     verificationCode: request.verificationCode,
   };
 }
 
 /** Map validated intake to Airtable Jobs columns (§5.4). */
 export function toJobIntakeFields(
-  intake: Pick<ValidatedBookingIntake, "vehicle" | "additionalDetails">,
+  intake: Pick<
+    ValidatedBookingIntake,
+    "vehicle" | "additionalDetails" | "scheduledTime"
+  >,
+  resolvedVehicle?: ResolvedVehicle,
 ): JobIntakeFields {
   const fields: JobIntakeFields = {};
+  const vehicle = resolvedVehicle ?? intake.vehicle;
 
-  if (intake.vehicle?.year !== undefined) {
-    fields.vehicle_year = intake.vehicle.year;
+  if (vehicle?.year !== undefined) {
+    fields.vehicle_year = vehicle.year;
   }
-  if (intake.vehicle?.make) {
-    fields.vehicle_make = intake.vehicle.make;
+  if (vehicle?.make) {
+    fields.vehicle_make = vehicle.make;
   }
-  if (intake.vehicle?.model) {
-    fields.vehicle_model = intake.vehicle.model;
+  if (vehicle?.model) {
+    fields.vehicle_model = vehicle.model;
   }
-  if (intake.vehicle?.vin) {
-    fields.vin = intake.vehicle.vin;
+  if (vehicle?.vin) {
+    fields.vin = vehicle.vin;
   }
   if (intake.additionalDetails) {
-    fields.additional_details = intake.additionalDetails;
+    fields.issue_text = intake.additionalDetails;
+  }
+  if (intake.scheduledTime) {
+    fields.scheduled_time = intake.scheduledTime;
   }
 
   return fields;

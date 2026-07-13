@@ -6,9 +6,10 @@ import {
 } from "@/lib/twilio";
 import { normalizeUsPhone } from "@/lib/phone";
 import type { MechanicStatus } from "@/types/airtable/enums";
+import { ACTION_ITEM_TYPE } from "@/types/airtable/enums";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 import type { MechanicFields } from "@/types/airtable/mechanics";
-import { createMechanicSchema } from "@/types/airtable/schemas";
+import { createActionItemSchema, createMechanicSchema } from "@/types/airtable/schemas";
 import { InvalidZipError } from "./errors";
 import { findMechanicByPhone } from "./lookup";
 import { mapServiceCategories } from "./map-categories";
@@ -74,42 +75,39 @@ function assertPilotServiceZips(zips: string[]): void {
   }
 }
 
-function attachmentFromUrl(
-  url?: string,
-): Array<{ url: string }> | undefined {
-  const trimmed = url?.trim();
-  if (!trimmed) {
-    return undefined;
+function buildCertificationsBlock(input: MechanicApplicationInput): string {
+  const lines: string[] = [];
+  if (input.yearsExperience !== undefined) {
+    lines.push(`Years experience: ${input.yearsExperience}`);
   }
-  return [{ url: trimmed }];
+  if (input.otherCertifications?.trim()) {
+    lines.push(input.otherCertifications.trim());
+  }
+  if (input.driverLicenseUrl?.trim()) {
+    lines.push(`Driver license: ${input.driverLicenseUrl.trim()}`);
+  }
+  if (input.aseCertificationUrl?.trim()) {
+    lines.push(`ASE certification: ${input.aseCertificationUrl.trim()}`);
+  }
+  if (input.insuranceDocumentUrl?.trim()) {
+    lines.push(`Insurance: ${input.insuranceDocumentUrl.trim()}`);
+  }
+  return lines.join("\n");
 }
 
-function attachmentFieldsFromUrls(input: {
-  profilePhotoUrl?: string;
-  driverLicenseUrl?: string;
-  aseCertificationUrl?: string;
-  insuranceDocumentUrl?: string;
-}): Partial<MechanicFields> {
-  const fields: Partial<MechanicFields> = {};
-  const profilePhoto = attachmentFromUrl(input.profilePhotoUrl);
-  if (profilePhoto) {
-    fields.profile_photo = profilePhoto as MechanicFields["profile_photo"];
+function parseLanguages(raw?: string): Array<"English" | "Spanish" | "Other"> {
+  if (!raw?.trim()) return ["English"];
+  const values = raw
+    .split(/[,\s/]+/)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  const mapped = new Set<"English" | "Spanish" | "Other">();
+  for (const value of values) {
+    if (value.startsWith("en")) mapped.add("English");
+    else if (value.startsWith("sp")) mapped.add("Spanish");
+    else mapped.add("Other");
   }
-  const driverLicense = attachmentFromUrl(input.driverLicenseUrl);
-  if (driverLicense) {
-    fields.driver_license = driverLicense as MechanicFields["driver_license"];
-  }
-  const aseCertification = attachmentFromUrl(input.aseCertificationUrl);
-  if (aseCertification) {
-    fields.ase_certification =
-      aseCertification as MechanicFields["ase_certification"];
-  }
-  const insuranceDocument = attachmentFromUrl(input.insuranceDocumentUrl);
-  if (insuranceDocument) {
-    fields.insurance_document =
-      insuranceDocument as MechanicFields["insurance_document"];
-  }
-  return fields;
+  return mapped.size > 0 ? [...mapped] : ["English"];
 }
 
 export async function submitMechanicApplication(
@@ -125,45 +123,40 @@ export async function submitMechanicApplication(
   const serviceZipCodes = parseZipCodes(input.primaryZip, input.additionalZips);
   assertPilotServiceZips(serviceZipCodes);
 
+  if (input.shopAvailable && !input.shopAddress?.trim()) {
+    throw new Error("Shop address is required for drop-off availability.");
+  }
+
   const mechanicFields = createMechanicSchema.parse({
-    status: "application_submitted",
-    full_name: input.fullName,
-    phone: phoneE164,
+    name: input.fullName,
+    phone_number: phoneE164,
     email: input.email,
     bio: input.bio,
-    languages: input.languages,
-    years_experience: input.yearsExperience,
-    ase_certified: input.aseCertified,
-    other_certifications: input.otherCertifications,
-    service_zip_codes: serviceZipCodes,
+    languages: parseLanguages(input.languages),
+    certifications: buildCertificationsBlock(input),
+    certified_status: input.aseCertified ? "certified" : "not_certified",
+    service_zip_codes: serviceZipCodes.join("\n"),
     service_categories: mapServiceCategories(input.services),
-    tools_confirmed: input.toolsConfirmed,
-    transport_confirmed: input.transportConfirmed,
-    mobile_repairs_confirmed: input.mobileRepairsConfirmed,
-    mobile_available: input.mobileAvailable,
-    shop_available: input.shopAvailable,
+    tools_confirmed: input.toolsConfirmed ? ["Basic tool kit" as const] : undefined,
     shop_address: input.shopAddress,
-    service_radius: input.serviceRadius,
+    profile_photo_url: input.profilePhotoUrl,
+    approved: false,
+    background_check_status: "not_submitted",
   });
-
-  const attachmentFields = attachmentFieldsFromUrls(input);
 
   const client = getAirtableClient();
   const mechanic = await client.createRecord<MechanicFields>(
     "mechanics",
-    {
-      ...mechanicFields,
-      ...attachmentFields,
-    },
+    mechanicFields as Partial<MechanicFields>,
     { typecast: true },
   );
 
-  const actionItemFields: Partial<ActionItemFields> = {
-    type: "new_mechanic_application",
+  const actionItemFields = createActionItemSchema.parse({
+    type: ACTION_ITEM_TYPE.PENDING_MECHANIC_APPROVAL,
     status: "open",
-    title: "New mechanic application",
-    mechanic: [mechanic.id],
-  };
+    description: `New mechanic application from ${input.fullName} (${phoneE164}).`,
+    linked_mechanic_id: [mechanic.id],
+  });
 
   await client.createRecord<ActionItemFields>(
     "action-items",
@@ -179,6 +172,6 @@ export async function submitMechanicApplication(
 
   return {
     mechanicId: mechanic.id,
-    status: mechanic.fields.status ?? "application_submitted",
+    status: "application_submitted",
   };
 }

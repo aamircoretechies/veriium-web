@@ -53,24 +53,48 @@ export type VerifyMechanicOtpResult = {
   mechanic: MechanicAuthSummary;
 };
 
+function deriveAccountState(
+  fields: MechanicFields,
+): MechanicStatus {
+  if (fields.background_check_status === "failed") {
+    return "rejected";
+  }
+  if (fields.approved) {
+    return "approved";
+  }
+  if (fields.background_check_status === "pending") {
+    return "under_review";
+  }
+  return "application_submitted";
+}
+
+function isSetupComplete(fields: MechanicFields): boolean {
+  return Boolean(
+    fields.profile_photo_url?.trim() &&
+      fields.service_zip_codes?.trim() &&
+      fields.tools_confirmed?.length,
+  );
+}
+
 function toAuthSummary(
   record: AirtableRecord<MechanicFields>,
 ): MechanicAuthSummary {
   const { fields } = record;
   return {
     id: record.id,
-    name: fields.full_name ?? "",
-    phone: fields.phone ?? "",
+    name: fields.name ?? "",
+    phone: fields.phone_number ?? "",
     email: fields.email ?? "",
-    accountState: fields.status,
-    setupComplete: Boolean(fields.setup_wizard_completed_at),
+    accountState: deriveAccountState(fields),
+    setupComplete: isSetupComplete(fields),
     availabilityOn: fields.availability_status === "available",
   };
 }
 
-function assertCanSignIn(status: MechanicStatus): void {
-  if (status === "rejected" || status === "suspended") {
-    throw new MechanicLockoutError(status);
+function assertCanSignIn(fields: MechanicFields): void {
+  const state = deriveAccountState(fields);
+  if (state === "rejected" || state === "suspended") {
+    throw new MechanicLockoutError(state);
   }
 }
 
@@ -84,11 +108,10 @@ async function requireMechanicByPhone(
   return mechanic;
 }
 
-/** Send an SMS OTP to a mechanic's phone. */
 export async function sendMechanicOtp(phone: string): Promise<void> {
   const phoneE164 = normalizeUsPhone(phone);
   const mechanic = await requireMechanicByPhone(phoneE164);
-  assertCanSignIn(mechanic.fields.status);
+  assertCanSignIn(mechanic.fields);
 
   try {
     await startVerification(phoneE164);
@@ -100,7 +123,6 @@ export async function sendMechanicOtp(phone: string): Promise<void> {
   }
 }
 
-/** Verify an OTP and issue a mechanic session JWT. */
 export async function verifyMechanicOtp(
   phone: string,
   code: string,
@@ -123,12 +145,13 @@ export async function verifyMechanicOtp(
   }
 
   const mechanic = await requireMechanicByPhone(phoneE164);
-  assertCanSignIn(mechanic.fields.status);
+  assertCanSignIn(mechanic.fields);
+  const accountState = deriveAccountState(mechanic.fields);
 
   const token = await signMechanicSession({
     mechanicId: mechanic.id,
     phone: phoneE164,
-    status: mechanic.fields.status,
+    status: accountState,
   });
 
   return {

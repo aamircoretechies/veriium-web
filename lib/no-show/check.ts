@@ -21,13 +21,13 @@ export async function runNoShowCheck(jobId: string): Promise<NoShowCheckResult> 
     return { jobId, skipped: true, reason: "status_not_arrived" };
   }
 
-  const mechanicId = job.fields.mechanic?.[0];
+  const mechanicId = job.fields.mechanic_id?.[0];
   if (!mechanicId) {
     return { jobId, skipped: true, reason: "no_mechanic" };
   }
 
   const mechanic = await getMechanicById(mechanicId);
-  const phone = mechanic.fields.phone;
+  const phone = mechanic.fields.phone_number;
   if (!phone) {
     return { jobId, skipped: true, reason: "no_mechanic_phone" };
   }

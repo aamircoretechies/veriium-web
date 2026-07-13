@@ -12,9 +12,10 @@ import { DriverNotLinkedError, StripeCustomerMissingError } from "./errors";
 import { resolveDefaultPaymentMethod } from "./payment-method";
 import {
   createPaymentRecord,
-  findPaymentByIdempotencyKey,
+  findPaymentByJobAndType,
   updatePaymentRecord,
 } from "./record";
+import { mapStripePaymentStatus } from "./status-map";
 
 export type CancellationFeeIntentResult = {
   paymentIntentId: string;
@@ -27,7 +28,7 @@ export async function createCancellationFeeIntent(
   jobId: string,
 ): Promise<CancellationFeeIntentResult> {
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     throw new DriverNotLinkedError(jobId);
   }
@@ -39,7 +40,7 @@ export async function createCancellationFeeIntent(
   }
 
   const idempotencyKey = cancelKey(jobId);
-  const existing = await findPaymentByIdempotencyKey(idempotencyKey);
+  const existing = await findPaymentByJobAndType(jobId, "cancellation_fee");
 
   if (existing?.fields.stripe_payment_intent_id) {
     const stripe = getStripe();
@@ -68,6 +69,7 @@ export async function createCancellationFeeIntent(
       metadata: {
         jobId,
         paymentType: "cancellation_fee",
+        paymentAttempt: "initial",
       },
     },
     { idempotencyKey },
@@ -75,22 +77,18 @@ export async function createCancellationFeeIntent(
 
   const record = existing
     ? await updatePaymentRecord(existing.id, {
-        status: paymentIntent.status === "succeeded" ? "succeeded" : "processing",
+        status: mapStripePaymentStatus(paymentIntent.status),
         stripe_payment_intent_id: paymentIntent.id,
-        stripe_customer_id: customerId,
         ...(paymentIntent.status === "succeeded"
           ? { captured_at: new Date().toISOString() }
           : {}),
       })
     : await createPaymentRecord({
-        type: "cancellation_fee",
         amount: amountDollars,
-        status: paymentIntent.status === "succeeded" ? "succeeded" : "processing",
-        idempotency_key: idempotencyKey,
-        stripe_customer_id: customerId,
+        type: "cancellation_fee",
+        status: mapStripePaymentStatus(paymentIntent.status),
         stripe_payment_intent_id: paymentIntent.id,
-        job: [jobId],
-        driver: [driverId],
+        job_id: [jobId],
         ...(paymentIntent.status === "succeeded"
           ? { captured_at: new Date().toISOString() }
           : {}),

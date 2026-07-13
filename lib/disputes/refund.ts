@@ -34,7 +34,7 @@ export async function refundJob(jobId: string): Promise<RefundJobResult> {
 
   const updated = await updateJobStatus(jobId, { status: "refunded" });
 
-  const mechanicId = job.fields.mechanic?.[0];
+  const mechanicId = job.fields.mechanic_id?.[0];
   if (mechanicId) {
     await markMechanicAvailable(mechanicId);
   }

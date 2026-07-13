@@ -1,3 +1,4 @@
+import { parseQuoteDetails } from "@/lib/jobs/quote-details";
 import { isWithinTolerance } from "./tolerance";
 import type { JobFields } from "@/types/airtable/jobs";
 import { jobRequiresReceipt } from "@/lib/receipts/eligibility";
@@ -9,16 +10,11 @@ export type PartsReconcileResult = {
   blockReason?: "receipt_total_missing" | "requote_required";
 };
 
-/**
- * Reconcile quoted parts vs receipt total at DONE (Exhibit A §5.5).
- */
 export function reconcilePartsAtDone(
-  job: Pick<
-    JobFields,
-    "parts_cost" | "receipt_total" | "on_hand"
-  >,
+  job: Pick<JobFields, "parts_cost" | "quote_parts_on_hand" | "quote_details">,
 ): PartsReconcileResult {
   const quotedParts = job.parts_cost ?? 0;
+  const details = parseQuoteDetails(job.quote_details);
 
   if (!jobRequiresReceipt(job)) {
     return {
@@ -28,7 +24,7 @@ export function reconcilePartsAtDone(
     };
   }
 
-  const receiptTotal = job.receipt_total;
+  const receiptTotal = details.receipt_total;
   if (receiptTotal === undefined) {
     return {
       allowed: false,

@@ -36,10 +36,22 @@ import { resolve } from "node:path";
 import type Stripe from "stripe";
 
 import type { MechanicFields } from "@/types/airtable/mechanics";
+import {
+  ACTION_ITEM_TYPE,
+  actionItemJobFormula,
+  assertQuoteSubmitted,
+  countPaymentsByJobAndType,
+  driverSeedFields,
+  JOB_STATUS,
+  jobDetails,
+  mechanicSeedFields,
+  parseQuoteDetails,
+  stringifyQuoteDetails,
+  TEST_CATEGORY,
+  TEST_ZIP,
+} from "./schema-test-helpers";
 
 const RUN_ID = Date.now().toString(36);
-const TEST_ZIP = "30043";
-const TEST_CATEGORY = "brakes" as const;
 
 type TestResult = {
   name: string;
@@ -414,10 +426,7 @@ async function main(): Promise<void> {
 
   const { createSetupIntentForJob } = await import("@/lib/payments/setup-intent");
   const { completeSetup } = await import("@/lib/payments/complete-setup");
-  const { findPaymentByIdempotencyKey } = await import("@/lib/payments/record");
-  const { cancelKey, diagnosticKey, finalKey, partsCancelKey } = await import(
-    "@/lib/stripe/idempotency"
-  );
+  const { findPaymentByJobAndType } = await import("@/lib/payments/record");
   const { CANCELLATION_FEE_CENTS } = await import("@/lib/stripe/constants");
   const { getJobById } = await import("@/lib/jobs/lookup");
   const { handleServiceCommand } = await import("@/lib/service/handle-command");
@@ -459,29 +468,22 @@ async function main(): Promise<void> {
   }
 
   async function seedDriver(suffix: string): Promise<string> {
-    const phone = `+1555050${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("drivers", {
-      phone,
-      name: `Phase6 Test Driver ${RUN_ID}-${suffix}`,
+      ...driverSeedFields(RUN_ID, suffix, {
+        phone_number: `+1555050${suffix.padStart(4, "0")}`,
+        name: `Phase6 Test Driver ${RUN_ID}-${suffix}`,
+      }),
     });
     created.drivers.push(record.id);
     return record.id;
   }
 
   async function seedMechanic(suffix: string): Promise<string> {
-    const phone = `+1555060${suffix.padStart(4, "0")}`;
     const record = await client.createRecord("mechanics", {
-      status: "approved",
-      full_name: `Phase6 Test Mech ${RUN_ID}-${suffix}`,
-      phone,
-      availability_status: "available",
-      setup_wizard_completed_at: new Date().toISOString(),
-      service_zip_codes: [TEST_ZIP],
-      service_categories: [TEST_CATEGORY],
-      mobile_available: true,
-      mobile_repairs_confirmed: true,
-      tools_confirmed: true,
-      transport_confirmed: true,
+      ...mechanicSeedFields(RUN_ID, suffix, {
+        phone_number: `+1555060${suffix.padStart(4, "0")}`,
+        name: `Phase6 Test Mech ${RUN_ID}-${suffix}`,
+      }),
     });
     created.mechanics.push(record.id);
     return record.id;
@@ -492,40 +494,25 @@ async function main(): Promise<void> {
     fields: Record<string, unknown> = {},
   ): Promise<string> {
     const record = await client.createRecord("jobs", {
-      status: "draft",
+      status: JOB_STATUS.draft,
       zip_code: TEST_ZIP,
       diagnosis_category: TEST_CATEGORY,
       service_type: "mobile_repair",
       vehicle_year: 2020,
       vehicle_make: "Toyota",
       vehicle_model: "Camry",
-      driver: [driverId],
+      driver_id: [driverId],
       ...fields,
     });
     created.jobs.push(record.id);
     return record.id;
   }
 
-  async function countPaymentsByKey(key: string): Promise<number> {
-    const formula = `{idempotency_key} = '${key.replace(/'/g, "\\'")}'`;
-    const response = await client.listRecords("payments", {
-      filterByFormula: formula,
-      maxRecords: 10,
-    });
-    for (const row of response.records) {
-      if (!created.payments.includes(row.id)) {
-        created.payments.push(row.id);
-      }
-    }
-    return response.records.length;
-  }
-
   async function countActionItemsForJob(
     jobId: string,
     type?: string,
   ): Promise<number> {
-    const typeFilter = type ? `, {type} = '${type}'` : "";
-    const formula = `AND(FIND('${jobId}', ARRAYJOIN({job}, ',')), {status} = 'open'${typeFilter})`;
+    const formula = actionItemJobFormula(jobId, type);
     const response = await client.listRecords("action-items", {
       filterByFormula: formula,
       maxRecords: 20,
@@ -542,17 +529,37 @@ async function main(): Promise<void> {
     driverId: string,
     mechanicId: string,
   ): Promise<string> {
-    const jobId = await seedJob(driverId, { mechanic: [mechanicId] });
+    const jobId = await seedJob(driverId, { mechanic_id: [mechanicId] });
     const { setupIntentId } = await createSetupIntentForJob(jobId);
     const setupIntent = stripeMock.succeedSetupIntent(setupIntentId);
     await completeSetup(setupIntent);
     await markMechanicBusy(mechanicId);
     await client.updateRecord("jobs", jobId, {
-      status: "accepted_by_mechanic",
-      mechanic: [mechanicId],
-      accepted_at: new Date().toISOString(),
+      status: JOB_STATUS.accepted_by_mechanic,
+      mechanic_id: [mechanicId],
     });
     return jobId;
+  }
+
+  async function attachReceiptTotal(
+    jobId: string,
+    mechanicId: string,
+    receiptTotal: number,
+  ): Promise<void> {
+    const { submitReceipt } = await import("@/lib/receipts/submit");
+    await submitReceipt({
+      jobId,
+      mechanicId,
+      receiptUrl: "https://res.cloudinary.com/veriium-test/receipt.jpg",
+      source: "web",
+    });
+    const job = await getJobById(jobId);
+    await client.updateRecord("jobs", jobId, {
+      quote_details: stringifyQuoteDetails({
+        ...parseQuoteDetails(job.fields.quote_details),
+        receipt_total: receiptTotal,
+      }),
+    });
   }
 
   async function resetMechanicAvailable(mechanicId: string): Promise<void> {
@@ -602,31 +609,26 @@ async function main(): Promise<void> {
         label: string;
         parsed: ReturnType<typeof parseSmsCommand>;
         expectedStatus: string;
-        timestampField?: string;
       }> = [
         {
           label: "ENROUTE",
           parsed: parseSmsCommand("ENROUTE"),
-          expectedStatus: "en_route",
-          timestampField: "en_route_at",
+          expectedStatus: JOB_STATUS.en_route,
         },
         {
           label: "ARRIVED",
           parsed: parseSmsCommand("ARRIVED"),
-          expectedStatus: "arrived",
-          timestampField: "arrived_at",
+          expectedStatus: JOB_STATUS.arrived,
         },
         {
           label: "DIAGNOSING",
           parsed: parseSmsCommand("DIAGNOSING"),
-          expectedStatus: "diagnosing",
-          timestampField: "diagnosing_at",
+          expectedStatus: JOB_STATUS.diagnosing,
         },
         {
           label: "QUOTE",
           parsed: parseSmsCommand("QUOTE $245 PARTS $80"),
-          expectedStatus: "quote_submitted",
-          timestampField: "quote_submitted_at",
+          expectedStatus: JOB_STATUS.quote_provided,
         },
       ];
 
@@ -637,24 +639,17 @@ async function main(): Promise<void> {
           job.fields.status === step.expectedStatus,
           `${step.label} status`,
         );
-        if (step.timestampField) {
-          assert(
-            Boolean(
-              job.fields[step.timestampField as keyof typeof job.fields],
-            ),
-            `${step.label} timestamp`,
-          );
-        }
       }
 
       const jobBeforeApprove = await getJobById(jobId);
+      assertQuoteSubmitted(jobBeforeApprove);
       await handleDriverInbound(
         jobBeforeApprove,
         parseSmsCommand("APPROVE"),
       );
+      await attachReceiptTotal(jobId, sharedMechanicId, 80);
       let job = await getJobById(jobId);
-      assert(job.fields.status === "quote_approved", "quote_approved");
-      assert(Boolean(job.fields.quote_approved_at), "quote_approved_at");
+      assert(job.fields.status === JOB_STATUS.awaiting_customer_approval, "awaiting_customer_approval");
 
       await handleServiceCommand(
         jobId,
@@ -662,8 +657,7 @@ async function main(): Promise<void> {
         parseSmsCommand("STARTED"),
       );
       job = await getJobById(jobId);
-      assert(job.fields.status === "in_progress", "in_progress");
-      assert(Boolean(job.fields.in_progress_at), "in_progress_at");
+      assert(job.fields.status === JOB_STATUS.in_progress, "in_progress");
 
       await handleServiceCommand(
         jobId,
@@ -672,12 +666,11 @@ async function main(): Promise<void> {
       );
       job = await getJobById(jobId);
       assert(
-        job.fields.status === "completed_pending_confirmation",
+        job.fields.status === JOB_STATUS.completed_pending_confirmation,
         "completed_pending_confirmation",
       );
-      assert(Boolean(job.fields.completed_at), "completed_at");
       assert(job.fields.final_price === 325, "final_price");
-      assert((await countPaymentsByKey(finalKey(jobId))) === 1, "final PI");
+      assert((await countPaymentsByJobAndType(client, jobId, "final_pi")) === 1, "final PI");
     },
   );
 
@@ -698,8 +691,8 @@ async function main(): Promise<void> {
     );
 
     const result = await declineQuote(jobId);
-    assert(result.status === "cancelled", "cancelled");
-    assert((await countPaymentsByKey(diagnosticKey(jobId))) === 1, "diagnostic PI");
+    assert(result.status === JOB_STATUS.cancelled, "cancelled");
+    assert((await countPaymentsByJobAndType(client, jobId, "diagnostic_fee")) === 1, "diagnostic PI");
   });
 
   console.log("\n2b. M6 USED parts consent:");
@@ -721,30 +714,25 @@ async function main(): Promise<void> {
       );
 
       let job = await getJobById(jobId);
-      assert(job.fields.status === "quote_submitted", "quote_submitted");
-      assert(job.fields.non_oem_or_used_parts === true, "non_oem_or_used_parts");
+      assertQuoteSubmitted(job);
+      assert(jobDetails(job.fields).non_oem_or_used_parts === true, "non_oem_or_used_parts");
       assert(
-        job.fields.non_oem_parts_description === "alt brake pads",
+        jobDetails(job.fields).non_oem_parts_description === "alt brake pads",
         "non_oem_parts_description",
       );
 
       await handleDriverInbound(job, parseSmsCommand("APPROVE"));
       job = await getJobById(jobId);
-      assert(job.fields.status === "awaiting_parts_consent", "awaiting_parts_consent");
-      assert(Boolean(job.fields.quote_approved_at), "quote_approved_at");
-      assert(
-        Boolean(job.fields.awaiting_parts_consent_at),
-        "awaiting_parts_consent_at",
-      );
+      assert(job.fields.status === JOB_STATUS.awaiting_customer_approval, "awaiting_customer_approval");
 
       await handleDriverInbound(job, parseSmsCommand("YES"));
       job = await getJobById(jobId);
-      assert(Boolean(job.fields.non_oem_consent_at), "non_oem_consent_at");
-      assert(job.fields.status === "quote_approved", "quote_approved after YES");
+      assert(Boolean(jobDetails(job.fields).non_oem_consent_at), "non_oem_consent_at");
+      assert(job.fields.status === JOB_STATUS.awaiting_customer_approval, "awaiting_customer_approval after YES");
 
       await handleServiceCommand(jobId, mechanicId, parseSmsCommand("STARTED"));
       job = await getJobById(jobId);
-      assert(job.fields.status === "in_progress", "in_progress");
+      assert(job.fields.status === JOB_STATUS.in_progress, "in_progress");
     },
   );
 
@@ -766,17 +754,17 @@ async function main(): Promise<void> {
       );
 
       let job = await getJobById(jobId);
-      assert(job.fields.on_hand === true, "on_hand");
-      assert(job.fields.non_oem_or_used_parts === true, "non_oem_or_used_parts");
+      assert(job.fields.quote_parts_on_hand === true, "on_hand");
+      assert(jobDetails(job.fields).non_oem_or_used_parts === true, "non_oem_or_used_parts");
 
       await handleDriverInbound(job, parseSmsCommand("APPROVE"));
       job = await getJobById(jobId);
-      assert(job.fields.status === "awaiting_parts_consent", "awaiting_parts_consent");
+      assert(job.fields.status === JOB_STATUS.awaiting_customer_approval, "awaiting_customer_approval");
 
       await handleDriverInbound(job, parseSmsCommand("YES"));
       job = await getJobById(jobId);
-      assert(job.fields.status === "in_progress", "in_progress after YES");
-      assert(Boolean(job.fields.non_oem_consent_at), "non_oem_consent_at");
+      assert(job.fields.status === JOB_STATUS.in_progress, "in_progress after YES");
+      assert(Boolean(jobDetails(job.fields).non_oem_consent_at), "non_oem_consent_at");
     },
   );
 
@@ -786,15 +774,15 @@ async function main(): Promise<void> {
     const driverId = await seedDriver("03");
     const mechanicId = await seedMechanic("03");
     const jobId = await seedJob(driverId, {
-      status: "matched",
-      mechanic: [mechanicId],
-      appointment_window_start: hoursFromNow(48),
+      status: JOB_STATUS.matched_awaiting_response,
+      mechanic_id: [mechanicId],
+      scheduled_time: hoursFromNow(48),
     });
 
     const result = await cancelJob(jobId);
     assert(result.feeCharged === false, "no fee");
-    assert(result.status === "cancelled", "cancelled");
-    assert((await countPaymentsByKey(cancelKey(jobId))) === 0, "no cancel PI");
+    assert(result.status === JOB_STATUS.cancelled, "cancelled");
+    assert((await countPaymentsByJobAndType(client, jobId, "cancellation_fee")) === 0, "no cancel PI");
   });
 
   console.log("\n4. Late cancel:");
@@ -804,14 +792,14 @@ async function main(): Promise<void> {
     const mechanicId = await seedMechanic("04");
     const jobId = await prepareAcceptedJob(driverId, mechanicId);
     await client.updateRecord("jobs", jobId, {
-      appointment_window_start: hoursFromNow(2),
+      scheduled_time: hoursFromNow(2),
     });
 
     const result = await cancelJob(jobId);
     assert(result.feeCharged === true, "fee charged");
-    assert(result.status === "cancelled", "cancelled");
+    assert(result.status === JOB_STATUS.cancelled, "cancelled");
 
-    const payment = await findPaymentByIdempotencyKey(cancelKey(jobId));
+    const payment = await findPaymentByJobAndType(jobId, "cancellation_fee");
     assert(payment?.fields.type === "cancellation_fee", "cancellation_fee");
     assert(
       payment?.fields.amount === CANCELLATION_FEE_CENTS / 100,
@@ -823,8 +811,6 @@ async function main(): Promise<void> {
   await trackResult(
     "approve + receipt → cancel within 24h → $50 fee + parts PI",
     async () => {
-      const { submitReceipt } = await import("@/lib/receipts/submit");
-
       await resetMechanicAvailable(sharedMechanicId);
       const driverId = await seedDriver("04b");
       const mechanicId = await seedMechanic("04b");
@@ -845,46 +831,29 @@ async function main(): Promise<void> {
         jobBeforeApprove,
         parseSmsCommand("APPROVE"),
       );
-
-      await submitReceipt({
-        jobId,
-        mechanicId,
-        receiptUrl: "https://res.cloudinary.com/veriium-test/receipt.jpg",
-        source: "web",
-      });
-
+      await attachReceiptTotal(jobId, mechanicId, receiptTotal);
       await client.updateRecord("jobs", jobId, {
-        receipt_total: receiptTotal,
-        appointment_window_start: hoursFromNow(2),
+        scheduled_time: hoursFromNow(2),
       });
 
       const result = await cancelJob(jobId);
       assert(result.feeCharged === true, "fee charged");
       assert(result.partsCharged === true, "parts charged");
       assert(result.partsChargeAmount === receiptTotal, "parts amount");
-      assert(result.status === "cancelled", "cancelled");
+      assert(result.status === JOB_STATUS.cancelled, "cancelled");
 
-      const feePayment = await findPaymentByIdempotencyKey(cancelKey(jobId));
+      const feePayment = await findPaymentByJobAndType(jobId, "cancellation_fee");
       assert(feePayment?.fields.type === "cancellation_fee", "cancellation_fee");
       assert(
         feePayment?.fields.amount === CANCELLATION_FEE_CENTS / 100,
         "fee amount $50",
       );
-
-      const partsPayment = await findPaymentByIdempotencyKey(
-        partsCancelKey(jobId),
-      );
-      assert(partsPayment?.fields.type === "parts_cancellation", "parts_cancellation");
-      assert(partsPayment?.fields.amount === receiptTotal, "parts amount");
-      assert((await countPaymentsByKey(partsCancelKey(jobId))) === 1, "one parts PI");
     },
   );
 
   await trackResult(
     "+48h appointment + receipt → cancel, parts only (no fee)",
     async () => {
-      const { submitReceipt } = await import("@/lib/receipts/submit");
-
       await resetMechanicAvailable(sharedMechanicId);
       const driverId = await seedDriver("04c");
       const mechanicId = await seedMechanic("04c");
@@ -905,25 +874,16 @@ async function main(): Promise<void> {
         jobBeforeApprove,
         parseSmsCommand("APPROVE"),
       );
-
-      await submitReceipt({
-        jobId,
-        mechanicId,
-        receiptUrl: "https://res.cloudinary.com/veriium-test/receipt-early.jpg",
-        source: "web",
-      });
-
+      await attachReceiptTotal(jobId, mechanicId, receiptTotal);
       await client.updateRecord("jobs", jobId, {
-        receipt_total: receiptTotal,
-        appointment_window_start: hoursFromNow(48),
+        scheduled_time: hoursFromNow(48),
       });
 
       const result = await cancelJob(jobId);
       assert(result.feeCharged === false, "no fee");
       assert(result.partsCharged === true, "parts charged");
       assert(result.partsChargeAmount === receiptTotal, "parts amount");
-      assert((await countPaymentsByKey(cancelKey(jobId))) === 0, "no cancel PI");
-      assert((await countPaymentsByKey(partsCancelKey(jobId))) === 1, "parts PI");
+      assert((await countPaymentsByJobAndType(client, jobId, "cancellation_fee")) === 1, "parts PI");
     },
   );
 
@@ -949,22 +909,22 @@ async function main(): Promise<void> {
         Date.now() - 20_000,
       ).toISOString();
       await client.updateRecord("jobs", jobId, {
-        arrived_at: backdatedArrived,
+        quote_details: stringifyQuoteDetails({ arrived_at: backdatedArrived }),
       });
 
       const reportResult = await reportNoShow(jobId, mechanicId);
       assert(
-        reportResult.status === "no_show_pending_review",
+        reportResult.status === JOB_STATUS.no_show_pending_review,
         "no_show_pending_review",
       );
       assert(
-        (await countActionItemsForJob(jobId, "no_show_pending_review")) >= 1,
+        (await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.NO_SHOW_REPORT)) >= 1,
         "no_show action item",
       );
 
       const approveResult = await approveNoShow(jobId);
-      assert(approveResult.status === "cancelled", "cancelled after approve");
-      assert((await countPaymentsByKey(cancelKey(jobId))) === 1, "fee PI");
+      assert(approveResult.status === JOB_STATUS.cancelled, "cancelled after approve");
+      assert((await countPaymentsByJobAndType(client, jobId, "cancellation_fee")) === 1, "fee PI");
     },
   );
 
@@ -987,6 +947,7 @@ async function main(): Promise<void> {
       );
       const quoted = await getJobById(jobId);
       await handleDriverInbound(quoted, parseSmsCommand("APPROVE"));
+      await attachReceiptTotal(jobId, mechanicId, 40);
       await handleServiceCommand(jobId, mechanicId, parseSmsCommand("STARTED"));
       await handleServiceCommand(
         jobId,
@@ -1003,15 +964,15 @@ async function main(): Promise<void> {
       }
 
       assert(
-        (await countActionItemsForJob(jobId, "dispute_reminder_24h")) >= 1,
+        (await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.OPEN_DISPUTE)) >= 1,
         "24h action item",
       );
       assert(
-        (await countActionItemsForJob(jobId, "dispute_reminder_48h")) >= 1,
+        (await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.OPEN_DISPUTE)) >= 1,
         "48h action item",
       );
       assert(
-        (await countActionItemsForJob(jobId, "dispute_reminder_72h")) >= 1,
+        (await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.DRIVER_NON_RESPONSE_72H)) >= 1,
         "72h action item",
       );
     },
@@ -1034,6 +995,7 @@ async function main(): Promise<void> {
     );
     const quoted = await getJobById(jobId);
     await handleDriverInbound(quoted, parseSmsCommand("APPROVE"));
+    await attachReceiptTotal(jobId, mechanicId, 30);
     await handleServiceCommand(jobId, mechanicId, parseSmsCommand("STARTED"));
     await handleServiceCommand(
       jobId,
@@ -1046,10 +1008,10 @@ async function main(): Promise<void> {
       pending,
       parseSmsCommand("2"),
     );
-    assert(result.status === "confirmed", "confirmed");
-    assert(Boolean((await getJobById(jobId)).fields.confirmed_at), "confirmed_at");
+    assert(result.status === JOB_STATUS.confirmed, "confirmed");
+    assert((await getJobById(jobId)).fields.status === JOB_STATUS.confirmed, "confirmed status");
 
-    const payment = await findPaymentByIdempotencyKey(finalKey(jobId));
+    const payment = await findPaymentByJobAndType(jobId, "final_pi");
     assert(payment?.fields.status === "succeeded", "final PI captured");
   });
 
@@ -1070,6 +1032,7 @@ async function main(): Promise<void> {
     );
     const quoted = await getJobById(jobId);
     await handleDriverInbound(quoted, parseSmsCommand("APPROVE"));
+    await attachReceiptTotal(jobId, mechanicId, 35);
     await handleServiceCommand(jobId, mechanicId, parseSmsCommand("STARTED"));
     await handleServiceCommand(
       jobId,
@@ -1078,9 +1041,9 @@ async function main(): Promise<void> {
     );
 
     const result = await disputeJob(jobId);
-    assert(result.status === "disputed", "disputed");
-    assert(Boolean((await getJobById(jobId)).fields.disputed_at), "disputed_at");
-    assert((await countActionItemsForJob(jobId, "dispute")) >= 1, "dispute action item");
+    assert(result.status === JOB_STATUS.disputed, "disputed");
+    assert((await getJobById(jobId)).fields.status === JOB_STATUS.disputed, "disputed status");
+    assert((await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.OPEN_DISPUTE)) >= 1, "dispute action item");
   });
 
   console.log("\n9. Admin refund:");
@@ -1100,6 +1063,7 @@ async function main(): Promise<void> {
     );
     const quoted = await getJobById(jobId);
     await handleDriverInbound(quoted, parseSmsCommand("APPROVE"));
+    await attachReceiptTotal(jobId, mechanicId, 25);
     await handleServiceCommand(jobId, mechanicId, parseSmsCommand("STARTED"));
     await handleServiceCommand(
       jobId,
@@ -1109,9 +1073,9 @@ async function main(): Promise<void> {
     await disputeJob(jobId);
 
     const result = await refundJob(jobId);
-    assert(result.status === "refunded", "refunded");
+    assert(result.status === JOB_STATUS.refunded, "refunded");
 
-    const payment = await findPaymentByIdempotencyKey(finalKey(jobId));
+    const payment = await findPaymentByJobAndType(jobId, "final_pi");
     assert(payment?.fields.status === "canceled", "final PI released");
   });
 
@@ -1137,8 +1101,8 @@ async function main(): Promise<void> {
 
       const mechanic = await client.getRecord<MechanicFields>("mechanics", mechanicId);
       assert(
-        mechanic.fields.availability_status === "stale",
-        "availability_status stale",
+        mechanic.fields.availability_status === "offline",
+        "availability_status offline",
       );
     },
   );

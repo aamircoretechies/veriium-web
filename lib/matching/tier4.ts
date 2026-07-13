@@ -2,6 +2,7 @@ import { createAwaitingAdminMatchActionItem } from "@/lib/action-items/create";
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
+import { getMatchTier, JOB_STATUS } from "@/lib/jobs/status";
 import { sendSms } from "@/lib/twilio/sms";
 import {
   tier4AdminAlert,
@@ -17,36 +18,42 @@ function getAdminPhone(): string {
   return phone;
 }
 
-/**
- * Escalate to admin manual matching. Idempotent when already `awaiting_admin_match`.
- */
 export async function runTier4(jobId: string): Promise<void> {
   const job = await getJobById(jobId);
   const status = job.fields.status;
+  const tier = getMatchTier(job);
 
-  if (status === "awaiting_admin_match" || status === "accepted_by_mechanic") {
+  if (
+    status === JOB_STATUS.awaiting_admin_match ||
+    status === JOB_STATUS.accepted_by_mechanic
+  ) {
     return;
   }
 
-  if (status !== "matched_tier3") {
+  if (status !== JOB_STATUS.matched_awaiting_response || tier !== 3) {
     return;
   }
 
-  await updateJobStatus(jobId, { status: "awaiting_admin_match" });
+  await updateJobStatus(jobId, {
+    status: JOB_STATUS.awaiting_admin_match,
+    escalated_at: new Date().toISOString(),
+  });
 
   const refreshed = await getJobById(jobId);
   const smsContext = buildJobSmsContext(refreshed);
   await createAwaitingAdminMatchActionItem({
     jobId,
     zipCode: smsContext.zipCode,
-    driver: refreshed.fields.driver,
+    driver: refreshed.fields.driver_id,
   });
 
-  const driverId = refreshed.fields.driver?.[0];
+  const driverId = refreshed.fields.driver_id?.[0];
   if (driverId) {
     try {
       const driver = await getDriverById(driverId);
-      await sendSms(driver.fields.phone, tier4DriverUpdate());
+      if (driver.fields.phone_number) {
+        await sendSms(driver.fields.phone_number, tier4DriverUpdate());
+      }
     } catch (error) {
       console.error(`[matching/tier4] Failed to notify driver for ${jobId}:`, error);
     }

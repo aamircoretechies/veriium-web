@@ -1,12 +1,9 @@
-import { escapeAirtableString, zipClause } from "@/lib/matching/query";
+import { eq, notBlank } from "@/lib/airtable/formula";
+import { zipClause } from "@/lib/matching/query";
 import { uiServiceToDiagnosisCategory } from "@/lib/mechanics/map-categories";
+import { serviceCategoryMatchClause } from "@/lib/mechanics/normalize-categories";
+import { FIELDS } from "@/types/airtable/generated/fields";
 import type { MechanicSearchQuery } from "@/types/api/mechanic-search";
-import type { DiagnosisCategory } from "@/types/airtable/enums";
-
-function categoryClause(category: DiagnosisCategory): string {
-  const value = escapeAirtableString(category);
-  return `FIND('${value}', ARRAYJOIN({service_categories}, ','))`;
-}
 
 function joinClauses(clauses: string[]): string {
   const filtered = clauses.filter(Boolean);
@@ -23,26 +20,30 @@ function serviceTypeClause(
   serviceType: MechanicSearchQuery["serviceType"],
 ): string {
   if (serviceType === "mobile") {
-    return "{mobile_available}=TRUE()";
+    return notBlank(FIELDS.Mechanics.phone_number);
   }
   if (serviceType === "shop") {
-    return "{shop_available}=TRUE()";
+    return notBlank(FIELDS.Mechanics.shop_address);
   }
   return "";
 }
 
-/** Public browse pool — approved mechanics with completed setup (no cooldown filter). */
 export function buildMechanicSearchFormula(query: MechanicSearchQuery): string {
   const clauses = [
-    "{status}='approved'",
-    "NOT({setup_wizard_completed_at}=BLANK())",
+    eq(FIELDS.Mechanics.approved, true),
+    notBlank(FIELDS.Mechanics.profile_photo_url),
+    notBlank(FIELDS.Mechanics.service_zip_codes),
     query.zip ? zipClause(query.zip) : "",
-    query.aseCertifiedOnly ? "{ase_certified}=TRUE()" : "",
+    query.aseCertifiedOnly
+      ? eq(FIELDS.Mechanics.certified_status, "certified")
+      : "",
     serviceTypeClause(query.serviceType),
-    query.availableTodayOnly ? "{availability_status}='available'" : "",
+    query.availableTodayOnly
+      ? eq(FIELDS.Mechanics.availability_status, "available")
+      : "",
     ...query.services.map((uiService) => {
       const category = uiServiceToDiagnosisCategory(uiService);
-      return category ? categoryClause(category) : "";
+      return category ? serviceCategoryMatchClause(category) : "";
     }),
   ];
 

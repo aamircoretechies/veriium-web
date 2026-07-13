@@ -4,6 +4,7 @@ import { InvalidOtpError } from "@/lib/auth/driver-otp";
 import { createBooking } from "@/lib/bookings/create";
 import {
   DiagnosisNotFoundError,
+  InvalidVehicleError,
   OutOfServiceAreaError,
 } from "@/lib/bookings/errors";
 import { InvalidPhoneError } from "@/lib/phone";
@@ -39,6 +40,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof DiagnosisNotFoundError) {
       return jsonError(404, "diagnosis_not_found", error.message);
+    }
+    if (error instanceof InvalidVehicleError) {
+      return jsonError(400, "invalid_vehicle", error.message);
     }
     if (error instanceof InvalidPhoneError) {
       return jsonError(400, "invalid_phone", error.message);

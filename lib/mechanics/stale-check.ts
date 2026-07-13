@@ -38,13 +38,16 @@ export async function runStaleAvailabilityCheck(
   }
 
   const fields = updateMechanicSchema.parse({
-    availability_status: "stale",
+    availability_status: "offline",
   });
   const client = getAirtableClient();
 
-  await client.updateRecord<MechanicFields>("mechanics", mechanicId, fields, {
-    typecast: true,
-  });
+  await client.updateRecord<MechanicFields>(
+    "mechanics",
+    mechanicId,
+    fields as Partial<MechanicFields>,
+    { typecast: true },
+  );
 
   return { mechanicId, action: "marked_stale" };
 }

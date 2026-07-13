@@ -2,6 +2,7 @@ import type Stripe from "stripe";
 
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
+import { mergeQuoteDetails } from "@/lib/jobs/quote-details";
 import { updateJobStatus } from "@/lib/jobs/update";
 import {
   createCancellationReviewActionItem,
@@ -20,9 +21,10 @@ import {
 } from "@/lib/stripe/idempotency";
 import { resolveDefaultPaymentMethod } from "./payment-method";
 import {
-  findPaymentByIdempotencyKey,
+  findPaymentByJobAndType,
   updatePaymentRecord,
 } from "./record";
+import { mapStripePaymentStatus } from "./status-map";
 import type { PaymentRetryPayload } from "@/types/api/service";
 
 export type PaymentRetryResult = {
@@ -56,6 +58,15 @@ function amountCentsForType(
     : CANCELLATION_FEE_CENTS;
 }
 
+async function clearPaymentRetryQstash(jobId: string): Promise<void> {
+  const job = await getJobById(jobId);
+  await updateJobStatus(jobId, {
+    quote_details: mergeQuoteDetails(job.fields.quote_details, {
+      payment_retry_qstash_id: "",
+    }),
+  });
+}
+
 async function escalatePaymentRetryFailure(
   jobId: string,
   paymentType: PaymentRetryPayload["paymentType"],
@@ -68,8 +79,8 @@ async function escalatePaymentRetryFailure(
       jobId,
       title: "Cancellation fee retry failed",
       notes: `Off-session cancellation fee retry failed for job ${jobId}: ${errorMessage}`,
-      driver: job.fields.driver,
-      mechanic: job.fields.mechanic,
+      driver: job.fields.driver_id,
+      mechanic: job.fields.mechanic_id,
     });
     return;
   }
@@ -77,29 +88,24 @@ async function escalatePaymentRetryFailure(
   await createDiagnosticFeeRetryFailedActionItem({
     jobId,
     notes: `Off-session diagnostic fee retry failed for job ${jobId}: ${errorMessage}`,
-    driver: job.fields.driver,
+    driver: job.fields.driver_id,
   });
 }
 
-/**
- * QStash worker — retry failed off-session diagnostic/cancellation charge (Exhibit A §4).
- */
 export async function runPaymentRetry(
   jobId: string,
   paymentType: PaymentRetryPayload["paymentType"],
 ): Promise<PaymentRetryResult> {
   const baseKey = baseKeyForType(jobId, paymentType);
-  const payment =
-    (await findPaymentByIdempotencyKey(paymentRetryKey(baseKey))) ??
-    (await findPaymentByIdempotencyKey(baseKey));
+  const payment = await findPaymentByJobAndType(jobId, paymentType);
 
   if (payment?.fields.status === "succeeded") {
-    await updateJobStatus(jobId, { payment_retry_qstash_id: "" });
+    await clearPaymentRetryQstash(jobId);
     return { jobId, paymentType, skipped: true, reason: "already_succeeded" };
   }
 
   const job = await getJobById(jobId);
-  const driverId = job.fields.driver?.[0];
+  const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
     return { jobId, paymentType, skipped: true, reason: "driver_not_linked" };
   }
@@ -120,7 +126,7 @@ export async function runPaymentRetry(
       );
 
       if (existingIntent.status === "succeeded") {
-        await updateJobStatus(jobId, { payment_retry_qstash_id: "" });
+        await clearPaymentRetryQstash(jobId);
         return { jobId, paymentType, skipped: true, reason: "already_succeeded" };
       }
 
@@ -135,14 +141,15 @@ export async function runPaymentRetry(
 
         if (payment) {
           await updatePaymentRecord(payment.id, {
-            status: confirmed.status === "succeeded" ? "succeeded" : "processing",
+            status: mapStripePaymentStatus(confirmed.status),
+            stripe_payment_intent_id: confirmed.id,
             ...(confirmed.status === "succeeded"
               ? { captured_at: new Date().toISOString() }
               : {}),
           });
         }
 
-        await updateJobStatus(jobId, { payment_retry_qstash_id: "" });
+        await clearPaymentRetryQstash(jobId);
         return { jobId, paymentType, action: "retried" };
       }
     }
@@ -161,6 +168,7 @@ export async function runPaymentRetry(
         metadata: {
           jobId,
           paymentType,
+          paymentAttempt: "retry",
         },
       },
       { idempotencyKey: retryKey },
@@ -168,25 +176,22 @@ export async function runPaymentRetry(
 
     if (payment) {
       await updatePaymentRecord(payment.id, {
-        status:
-          paymentIntent.status === "succeeded" ? "succeeded" : "processing",
-        idempotency_key: retryKey,
+        status: mapStripePaymentStatus(paymentIntent.status),
         stripe_payment_intent_id: paymentIntent.id,
-        stripe_customer_id: customerId,
         ...(paymentIntent.status === "succeeded"
           ? { captured_at: new Date().toISOString() }
           : {}),
       });
     }
 
-    await updateJobStatus(jobId, { payment_retry_qstash_id: "" });
+    await clearPaymentRetryQstash(jobId);
     return { jobId, paymentType, action: "retried" };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Payment retry failed";
 
     await escalatePaymentRetryFailure(jobId, paymentType, errorMessage);
-    await updateJobStatus(jobId, { payment_retry_qstash_id: "" });
+    await clearPaymentRetryQstash(jobId);
 
     return { jobId, paymentType, action: "escalated" };
   }

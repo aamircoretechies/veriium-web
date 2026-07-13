@@ -10,6 +10,7 @@ import {
   InvalidMechanicSessionError,
   requireMechanicSession,
 } from "@/lib/auth/mechanic-session";
+import { parseQuoteDetails } from "@/lib/jobs/quote-details";
 import { getJobById } from "@/lib/jobs/lookup";
 import { MechanicNotAssignedError } from "@/lib/matching/errors";
 import {
@@ -43,7 +44,7 @@ async function resolveMechanicId(
     }
 
     const job = await getJobById(jobId);
-    const mechanicId = job.fields.mechanic?.[0];
+    const mechanicId = job.fields.mechanic_id?.[0];
     if (!mechanicId) {
       throw new MechanicNotAssignedError(jobId, "signed-url");
     }
@@ -79,15 +80,18 @@ export async function GET(request: Request, context: RouteContext) {
     const job = await getJobById(jobId);
     assertMechanicAssigned(job, mechanicId);
 
+    const details = parseQuoteDetails(job.fields.quote_details);
+    const receiptUrl = job.fields.attachments?.[0]?.url ?? null;
+
     return jsonOk({
       jobId: job.id,
       status: job.fields.status,
       partsCost: job.fields.parts_cost ?? null,
-      onHand: job.fields.on_hand ?? false,
-      receiptUrl: job.fields.receipt_url ?? null,
-      receiptStatus: job.fields.receipt_status ?? null,
-      receiptSubmittedAt: job.fields.receipt_submitted_at ?? null,
-      partsReimbursementForfeited: job.fields.parts_reimbursement_forfeited ?? false,
+      onHand: job.fields.quote_parts_on_hand ?? false,
+      receiptUrl,
+      receiptStatus: details.receipt_status ?? null,
+      receiptSubmittedAt: null,
+      partsReimbursementForfeited: details.parts_reimbursement_forfeited ?? false,
       vehicle: {
         year: job.fields.vehicle_year ?? null,
         make: job.fields.vehicle_make ?? null,
