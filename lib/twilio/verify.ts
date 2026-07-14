@@ -23,11 +23,18 @@ export type VerificationCheckResponse = {
   valid: boolean;
 };
 
-/** Fixed OTP accepted when `NODE_ENV=development` (Twilio Verify skipped). */
+/**
+ * Fixed OTP accepted when Twilio Verify is skipped:
+ * - local `next dev` (`NODE_ENV=development`), or
+ * - `ALLOW_DEV_OTP=true` (e.g. Vercel Preview testing).
+ */
 export const DEV_OTP_CODE = "000000";
 
 function isDevOtpBypass(): boolean {
-  return process.env.NODE_ENV === "development";
+  return (
+    process.env.NODE_ENV === "development" ||
+    process.env.ALLOW_DEV_OTP === "true"
+  );
 }
 
 /** Start SMS OTP verification for a phone number (E.164). */

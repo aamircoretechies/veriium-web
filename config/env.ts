@@ -22,24 +22,41 @@ export const phase0EnvSchema = z.object({
     .default("https://qstash.upstash.io"),
 });
 
-const isDev = process.env.NODE_ENV === "development";
-
-/** Treat blank env strings as missing so `.default()` can apply in development. */
-function twilioEnv(devDefault: string) {
-  if (!isDev) {
-    return z.string().min(1);
-  }
-  return z.preprocess(
-    (value) =>
-      typeof value === "string" && value.trim() === "" ? undefined : value,
-    z.string().min(1).default(devDefault),
+/** True for local `next dev`, or when `ALLOW_DEV_OTP=true` (e.g. Vercel Preview). */
+function allowTwilioPlaceholders(): boolean {
+  return (
+    process.env.NODE_ENV === "development" ||
+    process.env.ALLOW_DEV_OTP === "true"
   );
 }
 
+/** Blank Twilio SIDs become placeholders when OTP bypass mode is on. */
+function twilioEnv(devDefault: string) {
+  return z.preprocess((value) => {
+    if (
+      allowTwilioPlaceholders() &&
+      (value === undefined ||
+        (typeof value === "string" && value.trim() === ""))
+    ) {
+      return devDefault;
+    }
+    return value;
+  }, z.string().min(1));
+}
+
+/**
+ * Parse `ALLOW_DEV_OTP` — only the string `"true"` enables fixed OTP bypass.
+ */
+const allowDevOtpSchema = z.preprocess(
+  (value) => value === "true" || value === true,
+  z.boolean().default(false),
+);
+
 /**
  * Required for Phase 1 mechanic onboarding (Twilio OTP, SMS, webhooks, sessions).
- * In development, blank Twilio SIDs fall back to placeholders — OTP uses a fixed
- * console code (`DEV_OTP_CODE` in lib/twilio/verify.ts) and skips Twilio Verify.
+ * In development (or with `ALLOW_DEV_OTP=true`), blank Twilio SIDs fall back to
+ * placeholders — OTP uses a fixed console code (`DEV_OTP_CODE` in
+ * lib/twilio/verify.ts) and skips Twilio Verify.
  */
 export const phase1EnvSchema = z.object({
   TWILIO_ACCOUNT_SID: twilioEnv("ACdev"),
@@ -48,6 +65,8 @@ export const phase1EnvSchema = z.object({
   TWILIO_MESSAGING_SERVICE_SID: twilioEnv("MGdev"),
   MECHANIC_SESSION_SECRET: z.string().min(32),
   AIRTABLE_WEBHOOK_SECRET: z.string().min(1),
+  /** When true, accept fixed OTP `000000` and skip Twilio Verify (Vercel Preview, etc.). */
+  ALLOW_DEV_OTP: allowDevOtpSchema,
 });
 
 /**
