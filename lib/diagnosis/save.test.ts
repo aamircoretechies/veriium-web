@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { createDiagnosisSchema } from "@/types/airtable/schemas";
+import { InputValidationError } from "./errors";
 import { validateDiagnosisInput } from "./validate-input";
 
 describe("diagnosis validation metadata", () => {
@@ -22,6 +23,31 @@ describe("diagnosis validation metadata", () => {
 
     assert.equal(result.validation_rule_triggered, "none");
     assert.equal(result.safety_flag, false);
+  });
+
+  it("R2 accepts car-related symptoms without the word car", () => {
+    const samples = [
+      "Engine makes a loud knocking sound today",
+      "Brakes squealing at every stop light",
+      "Transmission slipping when I accelerate hard",
+      "Battery is dead after sitting overnight",
+      "The check engine light came on yesterday",
+      "Won't start this morning at all now",
+      "Braking feels soft and spongy lately",
+    ];
+
+    for (const sample of samples) {
+      const result = validateDiagnosisInput(sample);
+      assert.equal(result.validation_rule_triggered, "none", sample);
+    }
+  });
+
+  it("R2 blocks clearly non-car input", () => {
+    assert.throws(
+      () => validateDiagnosisInput("I love pizza and movies today"),
+      (error: unknown) =>
+        error instanceof InputValidationError && error.code === "R2",
+    );
   });
 
   it("accepts diagnosis metadata fields in createDiagnosisSchema", () => {

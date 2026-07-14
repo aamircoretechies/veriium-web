@@ -21,7 +21,14 @@ function escapeRegExp(value: string): string {
 }
 
 function matchesKeyword(input: string, keyword: string): boolean {
-  const pattern = new RegExp(`\\b${escapeRegExp(keyword)}\\b`, "i");
+  // Exact phrase / short token (avoids "ac" matching "account", etc.).
+  if (keyword.includes(" ") || keyword.length < 4) {
+    const pattern = new RegExp(`\\b${escapeRegExp(keyword)}\\b`, "i");
+    return pattern.test(input);
+  }
+
+  // Longer tokens also match simple inflection (brake → brakes/braking).
+  const pattern = new RegExp(`\\b${escapeRegExp(keyword)}[a-z]*\\b`, "i");
   return pattern.test(input);
 }
 
