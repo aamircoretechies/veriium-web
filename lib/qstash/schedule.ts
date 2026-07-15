@@ -1,5 +1,6 @@
 import type { PublishRequest, PublishResponse } from "@upstash/qstash";
 import { getEnv } from "@/config/env";
+import { isQstashDev } from "@/lib/dev/flags";
 import { getQStashClient } from "./client";
 
 export type ScheduleJobOptions<TBody = unknown> = {
@@ -17,6 +18,62 @@ function buildAbsoluteUrl(path: string, appUrl: string): string {
   return `${appUrl.replace(/\/$/, "")}${normalizedPath}`;
 }
 
+function resolveDelayMs(options: ScheduleJobOptions): number {
+  if (options.notBefore !== undefined) {
+    return Math.max(0, options.notBefore * 1000 - Date.now());
+  }
+  if (options.delaySeconds !== undefined) {
+    return Math.max(0, options.delaySeconds * 1000);
+  }
+  return 0;
+}
+
+/**
+ * In `QSTASH_DEV` mode, fire the worker locally after the delay so timers
+ * still demonstrate without Upstash callbacks (next dev only; serverless
+ * may drop the timer if the isolate freezes — use short delays for demos).
+ */
+function scheduleLocalCallback<TBody>(
+  options: ScheduleJobOptions<TBody>,
+  messageId: string,
+): void {
+  const delayMs = resolveDelayMs(options);
+  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const url = buildAbsoluteUrl(options.path, appUrl);
+
+  const fire = () => {
+    void fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-qstash-dev-mock": messageId,
+      },
+      body: JSON.stringify(options.body),
+    }).then(
+      (res) => {
+        console.info(
+          `[qstash-dev] Local callback ${options.path} → ${res.status} (${messageId})`,
+        );
+      },
+      (error: unknown) => {
+        console.warn(
+          `[qstash-dev] Local callback failed for ${options.path}:`,
+          error,
+        );
+      },
+    );
+  };
+
+  if (delayMs === 0) {
+    fire();
+  } else {
+    console.info(
+      `[qstash-dev] Scheduling local callback ${options.path} in ${Math.round(delayMs / 1000)}s (${messageId})`,
+    );
+    setTimeout(fire, delayMs);
+  }
+}
+
 /** Publish a delayed job to a worker route under `APP_URL`. */
 export async function scheduleJob<TBody = unknown>(
   options: ScheduleJobOptions<TBody>,
@@ -32,6 +89,12 @@ export async function scheduleJob<TBody = unknown>(
     return {
       messageId: `mock-qstash-${Date.now()}`,
     } as PublishResponse<PublishRequest>;
+  }
+
+  if (isQstashDev()) {
+    const messageId = `mock-qstash-${Date.now()}`;
+    scheduleLocalCallback(options, messageId);
+    return { messageId } as PublishResponse<PublishRequest>;
   }
 
   const env = getEnv();

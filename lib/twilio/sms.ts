@@ -1,4 +1,5 @@
 import { getEnv } from "@/config/env";
+import { isSmsMock } from "@/lib/dev/flags";
 import { twilioApiRequest } from "./client";
 
 export type SendSmsResult = {
@@ -8,9 +9,26 @@ export type SendSmsResult = {
   body: string;
 };
 
+function mockSmsResult(to: string, body: string): SendSmsResult {
+  const result = {
+    sid: `SMmock${Date.now()}`,
+    status: "queued",
+    to,
+    body,
+  };
+  const log = (globalThis as { __manualTestSmsLog?: SendSmsResult[] })
+    .__manualTestSmsLog;
+  log?.push(result);
+  console.info(`[sms-mock] To ${to}: ${body}`);
+  return result;
+}
+
 /**
  * Send an outbound SMS via the configured Messaging Service.
  * Falls back to `TWILIO_PHONE_NUMBER` as `From` when no service SID is set.
+ *
+ * When `SMS_MOCK=1` or local/`ALLOW_DEV_OTP` bypass is on, logs the message
+ * and returns a fake SID (no Twilio Messaging call).
  */
 export async function sendSms(
   to: string,
@@ -19,19 +37,10 @@ export async function sendSms(
   if (
     process.env.MATCHING_MANUAL_TEST === "1" ||
     process.env.QUOTE_MANUAL_TEST === "1" ||
-    process.env.REQUOTE_MANUAL_TEST === "1"
+    process.env.REQUOTE_MANUAL_TEST === "1" ||
+    isSmsMock()
   ) {
-    const result = {
-      sid: `SMmock${Date.now()}`,
-      status: "queued",
-      to,
-      body,
-    };
-    const log = (
-      globalThis as { __manualTestSmsLog?: SendSmsResult[] }
-    ).__manualTestSmsLog;
-    log?.push(result);
-    return result;
+    return mockSmsResult(to, body);
   }
 
   const env = getEnv();
