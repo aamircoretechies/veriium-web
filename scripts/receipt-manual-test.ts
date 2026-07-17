@@ -18,6 +18,7 @@ import { resolve } from "node:path";
 import {
   ACTION_ITEM_TYPE,
   actionItemJobFormula,
+  actionItemLinkedToJob,
   assertQuoteSubmitted,
   driverSeedFields,
   JOB_STATUS,
@@ -224,14 +225,17 @@ async function main(): Promise<void> {
     const formula = actionItemJobFormula(jobId, type);
     const response = await client.listRecords("action-items", {
       filterByFormula: formula,
-      maxRecords: 20,
+      maxRecords: 100,
     });
-    for (const row of response.records) {
+    const matched = response.records.filter((row) =>
+      actionItemLinkedToJob(row, jobId),
+    );
+    for (const row of matched) {
       if (!created.actionItems.includes(row.id)) {
         created.actionItems.push(row.id);
       }
     }
-    return response.records.length;
+    return matched.length;
   }
 
   async function quoteJob(jobId: string, mechanicId: string): Promise<void> {

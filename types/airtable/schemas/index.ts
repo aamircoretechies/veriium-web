@@ -49,7 +49,11 @@ export const mechanicStatusSchema = z.enum(MECHANIC_STATUSES);
 export const airtableLinkedRecordsSchema = z.array(z.string().min(1));
 
 export const parsedDiagnosisSchema = z.object({
-  summary: z.string().min(1),
+  title: z.string().min(1),
+  explanation: z.string().min(1),
+  if_addressed: z.string().min(1),
+  if_ignored: z.string().min(1),
+  driveability_answer: z.string().min(1),
   category: diagnosisCategorySchema,
   driveability: driveabilitySchema,
   fix_now_vs_wait: fixNowVsWaitSchema,

@@ -1,5 +1,5 @@
 import { getAirtableClient } from "@/lib/airtable";
-import { and, eq, findInJoin } from "@/lib/airtable/formula";
+import { eq } from "@/lib/airtable/formula";
 import { FIELDS } from "@/types/airtable/generated/fields";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { PaymentFields } from "@/types/airtable/payments";
@@ -17,17 +17,16 @@ export async function findPaymentByJobAndType(
   type: PaymentType,
 ): Promise<AirtableRecord<PaymentFields> | null> {
   const client = getAirtableClient();
-  const formula = and(
-    eq(FIELDS.Payments.type, type),
-    findInJoin(FIELDS.Payments.job_id, jobId),
-  );
-
+  // Filter by type in formula; match job_id in code (ARRAYJOIN on linked
+  // records returns primary-field names on live Airtable, not record IDs).
   const response = await client.listRecords<PaymentFields>("payments", {
-    filterByFormula: formula,
-    maxRecords: 1,
+    filterByFormula: eq(FIELDS.Payments.type, type),
+    maxRecords: 100,
   });
 
-  return response.records[0] ?? null;
+  return (
+    response.records.find((row) => row.fields.job_id?.includes(jobId)) ?? null
+  );
 }
 
 /** Find a payment row by Stripe SetupIntent id. */

@@ -1,5 +1,5 @@
 import { getAirtableClient } from "@/lib/airtable";
-import { and, eq, findInJoin, or } from "@/lib/airtable/formula";
+import { and, eq, or } from "@/lib/airtable/formula";
 import { FIELDS } from "@/types/airtable/generated/fields";
 import { findDriverByPhone } from "@/lib/drivers/lookup";
 import { findMechanicByPhone } from "@/lib/mechanics/lookup";
@@ -12,6 +12,7 @@ import {
 } from "@/lib/jobs/status";
 import { normalizeServiceCategory } from "@/lib/mechanics/normalize-categories";
 import { normalizeUsPhone } from "@/lib/phone";
+import { mechanicLinkedToJob } from "@/lib/service/guards";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { JobFields } from "@/types/airtable/jobs";
 import { ACTIVE_SERVICE_STATUSES } from "./transitions";
@@ -36,18 +37,22 @@ export async function findPendingJobForMechanic(
   const client = getAirtableClient();
   const mechanicId = mechanic.id;
 
+  // Status + tier in formula; match mechanic_id in code (ARRAYJOIN returns
+  // primary-field names on live Airtable, not record IDs).
   const tier1 = await client.listRecords<JobFields>("jobs", {
     filterByFormula: and(
       eq(FIELDS.Jobs.status, JOB_STATUS.matched_awaiting_response),
       eq(FIELDS.Jobs.match_tier, 1),
-      findInJoin(FIELDS.Jobs.mechanic_id, mechanicId),
     ),
-    maxRecords: 1,
+    maxRecords: 100,
     sort: [{ field: FIELDS.Jobs.match_tier_started_at, direction: "desc" }],
   });
 
-  if (tier1.records[0]) {
-    return tier1.records[0];
+  const tier1Match = tier1.records.find((job) =>
+    mechanicLinkedToJob(job, mechanicId),
+  );
+  if (tier1Match) {
+    return tier1Match;
   }
 
   const broadcast = await client.listRecords<JobFields>("jobs", {
@@ -102,15 +107,15 @@ export async function findActiveJobForMechanic(
   const statusFilter = buildStatusOrFormula(ACTIVE_SERVICE_STATUSES);
 
   const response = await client.listRecords<JobFields>("jobs", {
-    filterByFormula: and(
-      statusFilter,
-      findInJoin(FIELDS.Jobs.mechanic_id, mechanic.id),
-    ),
-    maxRecords: 1,
+    filterByFormula: statusFilter,
+    maxRecords: 100,
     sort: [{ field: FIELDS.Jobs.created_at, direction: "desc" }],
   });
 
-  return response.records[0] ?? null;
+  return (
+    response.records.find((job) => mechanicLinkedToJob(job, mechanic.id)) ??
+    null
+  );
 }
 
 export async function findJobAwaitingDriverResponse(
@@ -130,17 +135,20 @@ export async function findJobAwaitingDriverResponse(
   ]);
 
   const response = await client.listRecords<JobFields>("jobs", {
-    filterByFormula: and(
-      statusFilter,
-      findInJoin(FIELDS.Jobs.driver_id, driver.id),
-    ),
-    maxRecords: 5,
+    filterByFormula: statusFilter,
+    maxRecords: 100,
     sort: [{ field: FIELDS.Jobs.created_at, direction: "desc" }],
   });
 
+  const forDriver = response.records.filter((job) =>
+    job.fields.driver_id?.includes(driver.id),
+  );
+
   return (
-    response.records.find(
+    forDriver.find(
       (job) => isQuoteSubmitted(job.fields) || isRequoteSubmitted(job.fields),
-    ) ?? response.records[0] ?? null
+    ) ??
+    forDriver[0] ??
+    null
   );
 }

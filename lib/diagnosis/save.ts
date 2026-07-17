@@ -34,7 +34,7 @@ export async function saveDiagnosis(
     ai_called: true,
     ai_latency_ms: input.ai.latency_ms,
     ai_response_raw: JSON.stringify(rawPayload),
-    ai_response_summary: input.ai.parsed.summary,
+    ai_response_summary: `${input.ai.parsed.title} ${input.ai.parsed.explanation}`,
     ai_response_category: input.ai.parsed.category,
     ai_response_driveability: input.ai.parsed.driveability,
     ai_response_cost_estimate: formatCostEstimate(

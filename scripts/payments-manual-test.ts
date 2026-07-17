@@ -54,6 +54,7 @@ import type { ActionItemFields } from "@/types/airtable/action-items";
 
 import {
   actionItemJobFormula,
+  actionItemLinkedToJob,
   countPaymentsByJobAndType,
   driverSeedFields,
   JOB_STATUS,
@@ -741,10 +742,13 @@ async function main(): Promise<void> {
 
     const actionItems = await client.listRecords("action-items", {
       filterByFormula: actionItemJobFormula(jobId),
-      maxRecords: 5,
+      maxRecords: 100,
     });
-    assert(actionItems.records.length >= 1, "action item created");
-    for (const row of actionItems.records) {
+    const matched = actionItems.records.filter((row) =>
+      actionItemLinkedToJob(row, jobId),
+    );
+    assert(matched.length >= 1, "action item created");
+    for (const row of matched) {
       if (!created.actionItems.includes(row.id)) {
         created.actionItems.push(row.id);
       }
@@ -905,12 +909,15 @@ async function main(): Promise<void> {
 
     const actionItems = await client.listRecords<ActionItemFields>("action-items", {
       filterByFormula: actionItemJobFormula(jobId, ACTION_ITEM_TYPE.FAILED_DIAGNOSTIC_FEE),
-      maxRecords: 5,
+      maxRecords: 100,
     });
-    assert(actionItems.records.length >= 1, "payment_failed action item");
-    const description = String(actionItems.records[0]?.fields.description ?? "");
+    const matched = actionItems.records.filter((row) =>
+      actionItemLinkedToJob(row, jobId),
+    );
+    assert(matched.length >= 1, "payment_failed action item");
+    const description = String(matched[0]?.fields.description ?? "");
     assert(description.includes("Recovery link:"), "recovery URL in description");
-    for (const row of actionItems.records) {
+    for (const row of matched) {
       if (!created.actionItems.includes(row.id)) {
         created.actionItems.push(row.id);
       }
@@ -983,10 +990,13 @@ async function main(): Promise<void> {
 
     const escalations = await client.listRecords("action-items", {
       filterByFormula: actionItemJobFormula(jobId, ACTION_ITEM_TYPE.FAILED_DIAGNOSTIC_FEE),
-      maxRecords: 5,
+      maxRecords: 100,
     });
-    assert(escalations.records.length >= 1, "diagnostic retry failed action item");
-    for (const row of escalations.records) {
+    const matched = escalations.records.filter((row) =>
+      actionItemLinkedToJob(row, jobId),
+    );
+    assert(matched.length >= 1, "diagnostic retry failed action item");
+    for (const row of matched) {
       if (!created.actionItems.includes(row.id)) {
         created.actionItems.push(row.id);
       }

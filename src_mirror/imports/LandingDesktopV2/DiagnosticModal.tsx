@@ -4,11 +4,7 @@ import { useState } from "react";
 import { GWINNETT_ZIP_CODES } from "@/lib/constants/gwinnett-zips";
 import type { BookingResponse } from "@/types/api/booking";
 import type { DiagnosisResponse } from "@/types/api/diagnosis";
-import type {
-  DiagnosisCategory,
-  Driveability,
-  FixNowVsWait,
-} from "@/types/airtable/enums";
+import type { FixNowVsWait } from "@/types/airtable/enums";
 
 const GWINNETT_ZIP_SET = new Set<string>(GWINNETT_ZIP_CODES);
 
@@ -21,31 +17,9 @@ async function parseApiError(res: Response): Promise<string> {
   }
 }
 
-const CATEGORY_LABELS: Record<DiagnosisCategory, string> = {
-  battery_starting: "Battery & Starting",
-  brakes: "Brakes",
-  oil_maintenance: "Oil & Maintenance",
-  engine_diagnostics: "Engine",
-  transmission: "Transmission",
-  tires_wheels: "Tires & Wheels",
-  electrical: "Electrical",
-  ac_heating: "A/C & Heating",
-  suspension_steering: "Suspension & Steering",
-  exhaust: "Exhaust",
-  fuel_system: "Fuel System",
-  general_maintenance: "General Maintenance",
-  unknown: "General",
-};
-
 const URGENCY_BADGES: Partial<Record<FixNowVsWait, string>> = {
   now: "Fix now",
   soon: "Time-sensitive",
-};
-
-const DRIVEABILITY_TEXT: Record<Driveability, string> = {
-  safe: "Your vehicle appears safe to drive for now, but have a mechanic verify the issue soon.",
-  caution: "Short trips may be possible, but continued driving increases the risk of further damage.",
-  do_not_drive: "Do not drive this vehicle until a mechanic inspects it.",
 };
 
 function formatCost(low: number, high: number): string {
@@ -55,14 +29,6 @@ function formatCost(low: number, high: number): string {
     maximumFractionDigits: 0,
   });
   return `${formatter.format(low)} – ${formatter.format(high)}`;
-}
-
-function splitSummary(summary: string): { title: string; body: string } {
-  const match = summary.match(/^(.+?[.!?])\s+([\s\S]+)$/);
-  if (match) {
-    return { title: match[1], body: match[2] };
-  }
-  return { title: summary, body: "" };
 }
 
 interface DiagnosticModalProps {
@@ -93,8 +59,6 @@ export default function DiagnosticModal({
   const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const { title: diagnosisTitle, body: diagnosisBody } = splitSummary(diagnosis.summary);
 
   function validateForm(): string | null {
     if (!name.trim()) return "Please enter your name.";
@@ -249,34 +213,52 @@ export default function DiagnosticModal({
         <div className="bg-[#f7f7f7] rounded-[14px] p-4 sm:p-6 border border-[#ebebeb]">
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <span className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] sm:text-[20px] text-black">
-              {diagnosisTitle}
+              {diagnosis.title}
             </span>
             {URGENCY_BADGES[diagnosis.fix_now_vs_wait] && (
-              <span className="bg-[#FF6B35] text-white text-[12px] font-['Albert_Sans:Bold',sans-serif] font-bold px-3 py-1 rounded-full whitespace-nowrap">
+              <span className="bg-[#ffd84d] text-black text-[12px] font-['Albert_Sans:Bold',sans-serif] font-bold px-3 py-1 rounded-full whitespace-nowrap">
                 {URGENCY_BADGES[diagnosis.fix_now_vs_wait]}
               </span>
             )}
-            <span className="bg-[#e8e8e8] text-[#444] text-[12px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold px-3 py-1 rounded-full whitespace-nowrap">
-              {CATEGORY_LABELS[diagnosis.category]}
-            </span>
           </div>
 
-          <p className="text-[15px] text-[#444] font-['Albert_Sans:Regular',sans-serif] leading-[1.7] mb-4">
-            {diagnosisBody ? `${diagnosisBody} ` : ""}
-            A verified mechanic will confirm the diagnosis before any work begins.
+          <p className="text-[15px] text-[#444] font-['Albert_Sans:Regular',sans-serif] leading-[1.75] mb-5">
+            {diagnosis.explanation} A verified mechanic will confirm the
+            diagnosis before any work begins.
           </p>
 
-          <div className="mb-4">
+          <div className="mb-5">
+            <p className="text-[15px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-2">
+              What does this mean for you?
+            </p>
+            <ul className="list-disc ml-5 text-[15px] text-[#444] font-['Albert_Sans:Regular',sans-serif] leading-[1.9] space-y-0.5">
+              <li>
+                If{" "}
+                <strong className="text-black font-semibold">
+                  addressed soon
+                </strong>
+                : {diagnosis.if_addressed}
+              </li>
+              <li>
+                If{" "}
+                <strong className="text-black font-semibold">ignored</strong>:{" "}
+                {diagnosis.if_ignored}
+              </li>
+            </ul>
+          </div>
+
+          <div className="mb-5">
             <p className="text-[15px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1">
               Can I keep driving?
             </p>
-            <p className="text-[15px] text-[#444] font-['Albert_Sans:Regular',sans-serif] leading-[1.7]">
-              {DRIVEABILITY_TEXT[diagnosis.driveability]}
+            <p className="text-[15px] text-[#444] font-['Albert_Sans:Regular',sans-serif] leading-[1.75]">
+              {diagnosis.driveability_answer}
             </p>
           </div>
 
-          <p className="text-[14px] text-[#888] font-['Albert_Sans:Regular',sans-serif] leading-[1.6] italic">
-            Include additional details about this issue and add your zip code to be matched with a trusted mechanic near you.
+          <p className="text-[14px] text-[#888] font-['Albert_Sans:Regular',sans-serif] leading-[1.6]">
+            Include additional details about this issue and add your zip code to
+            be matched with a trusted mechanic near you.
           </p>
         </div>
 

@@ -1,5 +1,5 @@
 import { getAirtableClient } from "@/lib/airtable";
-import { and, eq, findInJoin } from "@/lib/airtable/formula";
+import { and, eq } from "@/lib/airtable/formula";
 import { FIELDS } from "@/types/airtable/generated/fields";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 import { ACTION_ITEM_TYPE, type ActionItemType } from "@/types/airtable/enums";
@@ -12,18 +12,21 @@ export async function hasOpenActionItem(
   type: ActionItemType,
 ): Promise<boolean> {
   const client = getAirtableClient();
+  // Filter by type + status in formula; match linked_job_id in code
+  // (ARRAYJOIN on linked records returns primary-field names on live Airtable).
   const formula = and(
     eq(FIELDS.ActionItems.type, type),
     eq(FIELDS.ActionItems.status, "open"),
-    findInJoin(FIELDS.ActionItems.linked_job_id, jobId),
   );
 
   const response = await client.listRecords<ActionItemFields>("action-items", {
     filterByFormula: formula,
-    maxRecords: 1,
+    maxRecords: 100,
   });
 
-  return response.records.length > 0;
+  return response.records.some(
+    (row) => row.fields.linked_job_id?.includes(jobId) ?? false,
+  );
 }
 
 export type CreateAwaitingAdminMatchActionItemInput = {

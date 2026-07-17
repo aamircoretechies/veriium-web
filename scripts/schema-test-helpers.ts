@@ -56,9 +56,17 @@ export function driverSeedFields(
   };
 }
 
-export function actionItemJobFormula(jobId: string, type?: string): string {
+/** Scalar filters only — match linked_job_id in code after listing. */
+export function actionItemJobFormula(_jobId: string, type?: string): string {
   const typeFilter = type ? `, {type} = '${type.replace(/'/g, "\\'")}'` : "";
-  return `AND(FIND('${jobId}', ARRAYJOIN({linked_job_id}, ',')), {status} = 'open'${typeFilter})`;
+  return `AND({status} = 'open'${typeFilter})`;
+}
+
+export function actionItemLinkedToJob(
+  record: { fields: { linked_job_id?: string[] } },
+  jobId: string,
+): boolean {
+  return record.fields.linked_job_id?.includes(jobId) ?? false;
 }
 
 export async function countPaymentsByJobAndType(
@@ -66,12 +74,13 @@ export async function countPaymentsByJobAndType(
   jobId: string,
   type: PaymentType,
 ): Promise<number> {
-  const formula = `AND({type} = '${type}', FIND('${jobId}', ARRAYJOIN({job_id}, ',')))`;
-  const response = await client.listRecords("payments", {
-    filterByFormula: formula,
-    maxRecords: 10,
+  const response = await client.listRecords<{ job_id?: string[] }>("payments", {
+    filterByFormula: `{type} = '${type}'`,
+    maxRecords: 100,
   });
-  return response.records.length;
+  return response.records.filter((row) =>
+    row.fields.job_id?.includes(jobId),
+  ).length;
 }
 
 export function assertQuoteSubmitted(

@@ -7,7 +7,11 @@ import type { DiagnosisConfidence } from "./enums";
 
 /** Parsed AI diagnosis payload (§5.3). */
 export type ParsedDiagnosis = {
-  summary: string;
+  title: string;
+  explanation: string;
+  if_addressed: string;
+  if_ignored: string;
+  driveability_answer: string;
   category: DiagnosisCategory;
   driveability: Driveability;
   fix_now_vs_wait: FixNowVsWait;

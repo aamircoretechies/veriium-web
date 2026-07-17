@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createDiagnosisSchema } from "@/types/airtable/schemas";
+import {
+  createDiagnosisSchema,
+  parsedDiagnosisSchema,
+} from "@/types/airtable/schemas";
 import { InputValidationError } from "./errors";
 import { validateDiagnosisInput } from "./validate-input";
 
@@ -64,5 +67,42 @@ describe("diagnosis validation metadata", () => {
     assert.equal(parsed.ai_called, true);
     assert.equal(parsed.input_length, 42);
     assert.equal(parsed.ai_latency_ms, 812);
+  });
+
+  it("accepts structured kid-friendly fields in parsedDiagnosisSchema", () => {
+    const parsed = parsedDiagnosisSchema.parse({
+      title: "Coolant leak detected.",
+      explanation:
+        "Based on your description, this appears to be a coolant leak in your car. Coolant is a liquid that keeps your car's engine from getting too hot. Right now, some of that liquid is escaping, which can cause the engine to overheat if it's not fixed.",
+      if_addressed:
+        "helps prevent engine overheating and more expensive repairs",
+      if_ignored: "Can lead to overheating, breakdowns, or engine damage",
+      driveability_answer:
+        "Short trips may be possible, but continued driving increases the risk of overheating.",
+      category: "engine_diagnostics",
+      driveability: "caution",
+      fix_now_vs_wait: "soon",
+      cost_estimate_low: 200,
+      cost_estimate_high: 350,
+      confidence: "high",
+    });
+
+    assert.equal(parsed.title, "Coolant leak detected.");
+    assert.equal(parsed.fix_now_vs_wait, "soon");
+    assert.equal(parsed.driveability, "caution");
+  });
+
+  it("rejects legacy summary-only AI payloads", () => {
+    const result = parsedDiagnosisSchema.safeParse({
+      summary: "Likely a coolant leak in your car.",
+      category: "engine_diagnostics",
+      driveability: "caution",
+      fix_now_vs_wait: "soon",
+      cost_estimate_low: 200,
+      cost_estimate_high: 350,
+      confidence: "high",
+    });
+
+    assert.equal(result.success, false);
   });
 });

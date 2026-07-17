@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 
 import {
   actionItemJobFormula,
+  actionItemLinkedToJob,
   driverSeedFields,
   JOB_STATUS,
   mechanicSeedFields,
@@ -391,10 +392,13 @@ async function main(): Promise<void> {
 
     const actionItems = await client.listRecords("action-items", {
       filterByFormula: actionItemJobFormula(jobId),
-      maxRecords: 5,
+      maxRecords: 100,
     });
-    assert(actionItems.records.length >= 1, "action item created");
-    for (const row of actionItems.records) {
+    const matched = actionItems.records.filter((row) =>
+      actionItemLinkedToJob(row, jobId),
+    );
+    assert(matched.length >= 1, "action item created");
+    for (const row of matched) {
       if (!created.actionItems.includes(row.id)) {
         created.actionItems.push(row.id);
       }
