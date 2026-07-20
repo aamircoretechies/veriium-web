@@ -83,12 +83,6 @@ export default function PublicHeader({ hideAuthButtons }: PublicHeaderProps = {}
 
                 <nav className="flex flex-col gap-[28px]">
                   <button
-                    onClick={() => { setMenuOpen(false); router.push('/public/find-mechanic'); }}
-                    className="text-left font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 select-none"
-                  >
-                    Find a Mechanic
-                  </button>
-                  <button
                     onClick={() => { setMenuOpen(false); router.push('/public/about'); }}
                     className="text-left font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 select-none"
                   >

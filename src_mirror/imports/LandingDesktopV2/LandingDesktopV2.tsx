@@ -55,11 +55,10 @@ function Frame11({
   return (
     <div className="content-stretch flex items-center relative shrink-0">
       <div
-        className={`bg-[#ffa270] content-stretch flex flex-col items-center justify-center overflow-clip px-[20px] md:px-[28px] py-[12px] md:py-[28px] relative rounded-[8px] md:rounded-[12px] shrink-0 select-none transition-all duration-200 ${
-          disabled
+        className={`bg-[#ffa270] content-stretch flex flex-col items-center justify-center overflow-clip px-[20px] md:px-[28px] py-[12px] md:py-[28px] relative rounded-[8px] md:rounded-[12px] shrink-0 select-none transition-all duration-200 ${disabled
             ? "opacity-60 cursor-not-allowed"
             : "cursor-pointer hover:brightness-110 hover:shadow-lg active:scale-95"
-        }`}
+          }`}
         data-name="Button"
         onClick={disabled ? undefined : onStartDiagnosis}
       >
@@ -165,7 +164,7 @@ function Review1() {
 
 function Review() {
   return (
-    <div className="content-stretch flex items-center justify-center py-[40px] relative shrink-0 w-full" data-name="Review">
+    <div className="content-stretch flex items-center justify-center py-[16px] relative shrink-0 w-full" data-name="Review">
       <Review1 />
     </div>
   );
@@ -185,7 +184,7 @@ function Frame({
   isDiagnosing?: boolean;
 }) {
   return (
-    <div className="content-stretch flex flex-col gap-[60px] items-start py-[60px] relative shrink-0 w-full">
+    <div className="content-stretch flex flex-col gap-[60px] items-start py-[0px] relative shrink-0 w-full">
       <Heading />
       <InputField
         value={symptomInput}
@@ -655,12 +654,6 @@ export default function LandingDesktopV2() {
               <div className="flex flex-col gap-[36px]">
                 <nav className="flex flex-col gap-[28px]">
                   <button
-                    onClick={() => { setMenuOpen(false); router.push('/public/find-mechanic'); }}
-                    className="text-left font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 select-none"
-                  >
-                    Find a Mechanic
-                  </button>
-                  <button
                     onClick={() => { setMenuOpen(false); router.push('/public/about'); }}
                     className="text-left font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black cursor-pointer hover:text-[#ffa270] transition-colors duration-200 select-none"
                   >
@@ -755,7 +748,7 @@ export default function LandingDesktopV2() {
         <ThreeSteps />
         <Frame8 />
         <CtaMechanic onApplyMechanic={handleApplyMechanic} />
-        <Cta onStartDiagnosis={handleStartDiagnosis} />
+        <Cta onStartDiagnosis={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
       </div>
       <Footer />
     </div>
