@@ -157,7 +157,7 @@ function InputField({
 function Review1() {
   return (
     <div className="content-stretch flex flex-col items-start relative shrink-0 w-full md:w-[671px]" data-name="Review">
-      <p className="[word-break:break-word] font-['Albert_Sans:Bold',sans-serif] font-bold h-auto md:h-[30px] leading-[1.3] md:leading-none relative shrink-0 text-[18px] md:text-[26px] text-center text-white tracking-[0.1px] w-full">Trusted by over 20 million people nationwide!</p>
+      <p className="[word-break:break-word] font-['Albert_Sans:Bold',sans-serif] font-bold h-auto md:h-[30px] leading-[1.3] md:leading-none relative shrink-0 text-[18px] md:text-[26px] text-center text-white tracking-[0.1px] w-full">Local drivers. Local mechanics. Real trust</p>
     </div>
   );
 }

@@ -17,6 +17,11 @@ export default function LandingMobile() {
     <div className="min-h-screen bg-white">
       <div className="max-w-[600px] mx-auto px-4 py-12">
         <Logo />
+        <div className="mt-6 text-center">
+          <p className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] sm:text-[22px] text-black leading-[1.4]">
+            Local drivers. Local mechanics. Real trust
+          </p>
+        </div>
       </div>
       <Footer />
     </div>
