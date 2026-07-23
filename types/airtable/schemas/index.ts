@@ -48,6 +48,15 @@ export const mechanicStatusSchema = z.enum(MECHANIC_STATUSES);
 
 export const airtableLinkedRecordsSchema = z.array(z.string().min(1));
 
+export const airtableAttachmentInputSchema = z.object({
+  url: z.string().url(),
+});
+
+export const airtableAttachmentUpdateSchema =
+  airtableAttachmentInputSchema.extend({
+    id: z.string().optional(),
+  });
+
 export const parsedDiagnosisSchema = z.object({
   title: z.string().min(1),
   explanation: z.string().min(1),
@@ -161,14 +170,7 @@ export const updateJobSchema = z
     mechanic_payout: z.number().nonnegative().optional(),
     platform_fee: z.number().nonnegative().optional(),
     policy_disclosed_at: z.string().datetime().optional(),
-    attachments: z
-      .array(
-        z.object({
-          id: z.string().optional(),
-          url: z.string().url(),
-        }),
-      )
-      .optional(),
+    attachments: z.array(airtableAttachmentUpdateSchema).optional(),
     completed_at: z.string().datetime().optional(),
     cancelled_at: z.string().datetime().optional(),
     escalated_at: z.string().datetime().optional(),
@@ -200,7 +202,10 @@ export const createDiagnosisSchema = z.object({
 export const updateDiagnosisSchema = createDiagnosisSchema
   .omit({ input_text: true })
   .partial()
-  .extend({ input_text: z.string().min(1).optional() })
+  .extend({
+    input_text: z.string().min(1).optional(),
+    attachments: z.array(airtableAttachmentInputSchema).max(5).optional(),
+  })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field is required",
   });

@@ -7,6 +7,7 @@ import {
   InvalidVehicleError,
   OutOfServiceAreaError,
 } from "@/lib/bookings/errors";
+import { InvalidAttachmentUrlError } from "@/lib/cloudinary/validate-url";
 import { InvalidPhoneError } from "@/lib/phone";
 import { TwilioError } from "@/lib/twilio";
 import { bookingRequestSchema } from "@/types/api/booking";
@@ -43,6 +44,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof InvalidVehicleError) {
       return jsonError(400, "invalid_vehicle", error.message);
+    }
+    if (error instanceof InvalidAttachmentUrlError) {
+      return jsonError(400, "validation_error", error.message);
     }
     if (error instanceof InvalidPhoneError) {
       return jsonError(400, "invalid_phone", error.message);

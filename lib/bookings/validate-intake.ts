@@ -1,4 +1,5 @@
 import { GWINNETT_ZIP_CODES } from "@/lib/constants/gwinnett-zips";
+import { toAirtableAttachments, InvalidAttachmentUrlError } from "@/lib/cloudinary/validate-url";
 import type { BookingRequest, BookingVehicle } from "@/types/api/booking";
 import type { ServiceType } from "@/types/airtable/enums";
 import type { JobFields } from "@/types/airtable/jobs";
@@ -18,6 +19,7 @@ export type ValidatedBookingIntake = {
   additionalDetails?: string;
   scheduledTime?: string;
   verificationCode: string;
+  attachments?: { url: string }[];
 };
 
 export type JobIntakeFields = Pick<
@@ -76,6 +78,23 @@ function normalizeVehicle(
   return normalized;
 }
 
+function normalizeAttachments(
+  attachmentUrls?: string[],
+): { url: string }[] | undefined {
+  if (!attachmentUrls?.length) {
+    return undefined;
+  }
+
+  try {
+    return toAirtableAttachments(attachmentUrls);
+  } catch (error) {
+    if (error instanceof InvalidAttachmentUrlError) {
+      throw error;
+    }
+    throw new InvalidAttachmentUrlError();
+  }
+}
+
 /** Business rules on top of Zod parsing (ZIP allowlist, service type, trimming). */
 export function validateBookingIntake(
   request: BookingRequest,
@@ -94,6 +113,7 @@ export function validateBookingIntake(
     additionalDetails: request.additionalDetails?.trim() || undefined,
     scheduledTime: request.scheduledTime,
     verificationCode: request.verificationCode,
+    attachments: normalizeAttachments(request.attachmentUrls),
   };
 }
 

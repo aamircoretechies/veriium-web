@@ -1,12 +1,14 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { uploadToCloudinary } from "@/lib/cloudinary/upload";
 import { GWINNETT_ZIP_CODES } from "@/lib/constants/gwinnett-zips";
 import type { BookingResponse } from "@/types/api/booking";
 import type { DiagnosisResponse } from "@/types/api/diagnosis";
 import type { FixNowVsWait } from "@/types/airtable/enums";
 
 const GWINNETT_ZIP_SET = new Set<string>(GWINNETT_ZIP_CODES);
+const MAX_ATTACHMENTS = 5;
 
 async function parseApiError(res: Response): Promise<string> {
   try {
@@ -59,6 +61,16 @@ export default function DiagnosticModal({
   const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [attachmentUrls, setAttachmentUrls] = useState<string[]>([]);
+  const [attachmentNames, setAttachmentNames] = useState<string[]>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const cloudinaryConfigured = Boolean(
+    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME &&
+      process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
+  );
 
   function validateForm(): string | null {
     if (!name.trim()) return "Please enter your name.";
@@ -82,6 +94,56 @@ export default function DiagnosticModal({
       return "Please acknowledge that providing your phone number creates a Veriium account.";
     }
     return null;
+  }
+
+  async function handleMediaSelect(files: FileList | null) {
+    if (!files?.length) {
+      return;
+    }
+
+    const remaining = MAX_ATTACHMENTS - attachmentUrls.length;
+    if (remaining <= 0) {
+      setUploadError(`You can add up to ${MAX_ATTACHMENTS} photos or videos.`);
+      return;
+    }
+
+    const selected = Array.from(files).slice(0, remaining);
+    if (files.length > remaining) {
+      setUploadError(`Only ${remaining} more item(s) can be added.`);
+    } else {
+      setUploadError("");
+    }
+
+    setUploadingMedia(true);
+    try {
+      const uploaded = await Promise.all(
+        selected.map(async (file) => ({
+          name: file.name,
+          url: await uploadToCloudinary(file),
+        })),
+      );
+      setAttachmentUrls((current) => [
+        ...current,
+        ...uploaded.map((item) => item.url),
+      ]);
+      setAttachmentNames((current) => [
+        ...current,
+        ...uploaded.map((item) => item.name),
+      ]);
+    } catch {
+      setUploadError("Failed to upload file. Please try again.");
+    } finally {
+      setUploadingMedia(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function handleRemoveAttachment(index: number) {
+    setAttachmentUrls((current) => current.filter((_, i) => i !== index));
+    setAttachmentNames((current) => current.filter((_, i) => i !== index));
+    setUploadError("");
   }
 
   async function handleSendCode() {
@@ -147,6 +209,7 @@ export default function DiagnosticModal({
           serviceType,
           ...(vehicle ? { vehicle } : {}),
           ...(details.trim() ? { additionalDetails: details.trim() } : {}),
+          ...(attachmentUrls.length ? { attachmentUrls } : {}),
           smsConsent: true,
           phoneConsent: true,
           verificationCode,
@@ -415,17 +478,60 @@ export default function DiagnosticModal({
             <label className="block text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1.5">
               Photos/Videos <span className="text-[#aaa] font-normal">(optional)</span>
             </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              className="hidden"
+              onChange={(e) => void handleMediaSelect(e.target.files)}
+            />
             <div className="flex items-center w-full max-w-[320px]">
-              <div className="flex-1 border border-[#d2d2d2] rounded-l-[8px] border-r-0 px-4 py-2 bg-white flex items-center h-[42px]">
-                <span className="text-[#aaa] text-[14px] font-['Albert_Sans:Light',sans-serif]">Add up to 5 items</span>
+              <div className="flex-1 border border-[#d2d2d2] rounded-l-[8px] border-r-0 px-4 py-2 bg-white flex items-center h-[42px] min-w-0">
+                <span className="text-[#aaa] text-[14px] font-['Albert_Sans:Light',sans-serif] truncate">
+                  {attachmentUrls.length > 0
+                    ? `${attachmentUrls.length} of ${MAX_ATTACHMENTS} added`
+                    : "Add up to 5 items"}
+                </span>
               </div>
               <button
                 type="button"
-                className="bg-[#ffa270] text-black font-['Albert_Sans:Bold',sans-serif] font-bold text-[14px] px-6 rounded-[8px] hover:brightness-110 transition-all h-[42px] -ml-2 relative z-10 cursor-pointer"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingMedia || attachmentUrls.length >= MAX_ATTACHMENTS}
+                className="bg-[#ffa270] text-black font-['Albert_Sans:Bold',sans-serif] font-bold text-[14px] px-6 rounded-[8px] hover:brightness-110 transition-all h-[42px] -ml-2 relative z-10 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Upload
+                {uploadingMedia ? "Uploading…" : "Upload"}
               </button>
             </div>
+            {!cloudinaryConfigured && (
+              <p className="text-[12px] text-[#888] mt-1.5 font-['Albert_Sans:Regular',sans-serif]">
+                Staging: uploads use a placeholder image when Cloudinary is not configured.
+              </p>
+            )}
+            {attachmentNames.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1">
+                {attachmentNames.map((fileName, index) => (
+                  <li
+                    key={`${fileName}-${index}`}
+                    className="flex items-center justify-between gap-2 text-[13px] text-[#555] font-['Albert_Sans:Regular',sans-serif]"
+                  >
+                    <span className="truncate">{fileName}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAttachment(index)}
+                      className="text-[#888] hover:text-black shrink-0 bg-transparent border-none cursor-pointer p-0"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {uploadError && (
+              <p className="text-[13px] text-red-500 font-['Albert_Sans:Regular',sans-serif] mt-1.5">
+                {uploadError}
+              </p>
+            )}
           </div>
 
           {/* Service type */}
@@ -543,7 +649,7 @@ export default function DiagnosticModal({
             <button
               type="button"
               onClick={() => router.push('/public/schedule-later')}
-              disabled={loading}
+              disabled={loading || uploadingMedia}
               className="flex-1 bg-[#ebebeb] hover:bg-[#e0e0e0] border border-black rounded-[10px] py-3.5 font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black hover:brightness-105 active:scale-95 transition-all duration-150 shadow-sm cursor-pointer text-center disabled:opacity-70"
             >
               Schedule Later
@@ -551,7 +657,7 @@ export default function DiagnosticModal({
             <button
               type="button"
               onClick={handleFindMechanicClick}
-              disabled={loading}
+              disabled={loading || uploadingMedia}
               className="flex-1 bg-[#ffa270] rounded-[10px] py-3.5 font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black hover:brightness-110 active:scale-95 transition-all duration-150 shadow-sm cursor-pointer text-center disabled:opacity-70"
             >
               {loading

@@ -79,6 +79,7 @@ export async function createBooking(
   const diagnosisUpdate = updateDiagnosisSchema.parse({
     driver_id: [driverId],
     job_id: [job.id],
+    ...(intake.attachments?.length ? { attachments: intake.attachments } : {}),
   });
 
   await client.updateRecord<DiagnosisFields>(
