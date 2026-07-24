@@ -3,8 +3,11 @@ import { toAirtableAttachments, InvalidAttachmentUrlError } from "@/lib/cloudina
 import type { BookingRequest, BookingVehicle } from "@/types/api/booking";
 import type { ServiceType } from "@/types/airtable/enums";
 import type { JobFields } from "@/types/airtable/jobs";
-import { OutOfServiceAreaError } from "./errors";
+import { InvalidScheduledTimeError, OutOfServiceAreaError } from "./errors";
 import type { ResolvedVehicle } from "./resolve-vehicle";
+import {
+  buildScheduledTimeIso,
+} from "./scheduled-time";
 
 const GWINNETT_ZIP_SET = new Set<string>(GWINNETT_ZIP_CODES);
 
@@ -78,6 +81,25 @@ function normalizeVehicle(
   return normalized;
 }
 
+function resolveScheduledTime(request: BookingRequest): string | undefined {
+  if (request.scheduleSlot) {
+    return buildScheduledTimeIso(
+      request.scheduleSlot.month,
+      request.scheduleSlot.day,
+      request.scheduleSlot.time,
+    );
+  }
+
+  return request.scheduledTime;
+}
+
+function assertFutureScheduledTime(scheduledTime: string): void {
+  const scheduledMs = Date.parse(scheduledTime);
+  if (!Number.isFinite(scheduledMs) || scheduledMs <= Date.now()) {
+    throw new InvalidScheduledTimeError();
+  }
+}
+
 function normalizeAttachments(
   attachmentUrls?: string[],
 ): { url: string }[] | undefined {
@@ -102,6 +124,11 @@ export function validateBookingIntake(
   const zip = request.zip.trim();
   assertGwinnettZip(zip);
 
+  const scheduledTime = resolveScheduledTime(request);
+  if (scheduledTime) {
+    assertFutureScheduledTime(scheduledTime);
+  }
+
   return {
     diagnosisId: request.diagnosisId,
     name: request.name.trim(),
@@ -111,7 +138,7 @@ export function validateBookingIntake(
     serviceType: normalizeServiceType(request.serviceType),
     vehicle: normalizeVehicle(request.vehicle),
     additionalDetails: request.additionalDetails?.trim() || undefined,
-    scheduledTime: request.scheduledTime,
+    scheduledTime,
     verificationCode: request.verificationCode,
     attachments: normalizeAttachments(request.attachmentUrls),
   };

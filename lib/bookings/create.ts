@@ -2,6 +2,7 @@ import { getAirtableClient, AirtableError } from "@/lib/airtable";
 import { verifyDriverOtp } from "@/lib/auth/driver-otp";
 import { buildSignedJobUrl } from "@/lib/auth/signed-url";
 import { upsertDriver } from "@/lib/drivers/upsert";
+import { JOB_STATUS } from "@/lib/jobs/status";
 import type { BookingRequest, BookingResponse } from "@/types/api/booking";
 import type { DiagnosisFields } from "@/types/airtable/diagnoses";
 import type { JobFields } from "@/types/airtable/jobs";
@@ -60,7 +61,7 @@ export async function createBooking(
   const rawMeta = parseDiagnosisRaw(diagnosis.fields.ai_response_raw);
 
   const jobFields = createJobSchema.parse({
-    status: "draft",
+    status: intake.scheduledTime ? JOB_STATUS.scheduled : JOB_STATUS.draft,
     driver_id: [driverId],
     diagnosis_id: [intake.diagnosisId],
     zip_code: intake.zip,
@@ -93,5 +94,6 @@ export async function createBooking(
     jobId: job.id,
     driverId,
     signedUrl: await buildSignedJobUrl(job.id),
+    ...(intake.scheduledTime ? { scheduledTime: intake.scheduledTime } : {}),
   };
 }

@@ -14,6 +14,12 @@ export const bookingServiceTypeSchema = z.enum([
   "onsite",
 ]);
 
+export const bookingScheduleSlotSchema = z.object({
+  month: z.coerce.number().int().min(1).max(12),
+  day: z.coerce.number().int().min(1).max(31),
+  time: z.enum(["morning", "afternoon", "evening"]),
+});
+
 export const bookingRequestSchema = z.object({
   diagnosisId: z.string().min(1),
   name: z.string().min(1),
@@ -25,6 +31,7 @@ export const bookingRequestSchema = z.object({
   additionalDetails: z.string().optional(),
   attachmentUrls: z.array(z.string().url()).max(5).optional(),
   scheduledTime: z.string().datetime().optional(),
+  scheduleSlot: bookingScheduleSlotSchema.optional(),
   smsConsent: z.literal(true),
   phoneConsent: z.literal(true),
   verificationCode: z
@@ -36,9 +43,11 @@ export const bookingResponseSchema = z.object({
   jobId: z.string().min(1),
   driverId: z.string().min(1),
   signedUrl: z.string().url(),
+  scheduledTime: z.string().datetime().optional(),
 });
 
 export type BookingVehicle = z.infer<typeof bookingVehicleSchema>;
 export type BookingServiceTypeInput = z.infer<typeof bookingServiceTypeSchema>;
+export type BookingScheduleSlot = z.infer<typeof bookingScheduleSlotSchema>;
 export type BookingRequest = z.infer<typeof bookingRequestSchema>;
 export type BookingResponse = z.infer<typeof bookingResponseSchema>;

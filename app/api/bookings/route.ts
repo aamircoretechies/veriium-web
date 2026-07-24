@@ -4,6 +4,7 @@ import { InvalidOtpError } from "@/lib/auth/driver-otp";
 import { createBooking } from "@/lib/bookings/create";
 import {
   DiagnosisNotFoundError,
+  InvalidScheduledTimeError,
   InvalidVehicleError,
   OutOfServiceAreaError,
 } from "@/lib/bookings/errors";
@@ -44,6 +45,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof InvalidVehicleError) {
       return jsonError(400, "invalid_vehicle", error.message);
+    }
+    if (error instanceof InvalidScheduledTimeError) {
+      return jsonError(400, "invalid_scheduled_time", error.message);
     }
     if (error instanceof InvalidAttachmentUrlError) {
       return jsonError(400, "validation_error", error.message);

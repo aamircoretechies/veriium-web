@@ -27,6 +27,7 @@ export function jobStatusOr(
 /** Schema-aligned job status literals. */
 export const JOB_STATUS = {
   draft: "draft",
+  scheduled: "Scheduled",
   matched_awaiting_payment: "matched_awaiting_payment",
   matched_awaiting_response: "matched_awaiting_response",
   awaiting_admin_match: "awaiting_admin_match",

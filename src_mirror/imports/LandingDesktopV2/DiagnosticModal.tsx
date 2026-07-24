@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { uploadToCloudinary } from "@/lib/cloudinary/upload";
+import { saveScheduleLaterIntake } from "@/lib/bookings/schedule-later-intake";
 import { GWINNETT_ZIP_CODES } from "@/lib/constants/gwinnett-zips";
 import type { BookingResponse } from "@/types/api/booking";
 import type { DiagnosisResponse } from "@/types/api/diagnosis";
@@ -237,6 +238,31 @@ export default function DiagnosticModal({
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleScheduleLaterClick() {
+    const vehicle =
+      year.trim() || make.trim() || model.trim() || vin.trim()
+        ? {
+            ...(year.trim() ? { year: Number(year.trim()) } : {}),
+            ...(make.trim() ? { make: make.trim() } : {}),
+            ...(model.trim() ? { model: model.trim() } : {}),
+            ...(vin.trim() ? { vin: vin.trim() } : {}),
+          }
+        : undefined;
+
+    saveScheduleLaterIntake({
+      diagnosisId: diagnosis.diagnosisId,
+      serviceType,
+      name: name.trim() || undefined,
+      zip: zip.trim() || undefined,
+      phone: phone.trim() || undefined,
+      email: email.trim() || undefined,
+      additionalDetails: details.trim() || undefined,
+      ...(attachmentUrls.length ? { attachmentUrls } : {}),
+      ...(vehicle ? { vehicle } : {}),
+    });
+    router.push("/public/schedule-later");
   }
 
   function handleFindMechanicClick() {
@@ -648,7 +674,7 @@ export default function DiagnosticModal({
           <div className="flex gap-4 mt-4 w-full max-w-[500px]">
             <button
               type="button"
-              onClick={() => router.push('/public/schedule-later')}
+              onClick={handleScheduleLaterClick}
               disabled={loading || uploadingMedia}
               className="flex-1 bg-[#ebebeb] hover:bg-[#e0e0e0] border border-black rounded-[10px] py-3.5 font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] text-black hover:brightness-105 active:scale-95 transition-all duration-150 shadow-sm cursor-pointer text-center disabled:opacity-70"
             >

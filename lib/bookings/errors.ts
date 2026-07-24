@@ -20,3 +20,12 @@ export class InvalidVehicleError extends Error {
     this.name = "InvalidVehicleError";
   }
 }
+
+export class InvalidScheduledTimeError extends Error {
+  constructor(
+    message = "Scheduled time must be in the future.",
+  ) {
+    super(message);
+    this.name = "InvalidScheduledTimeError";
+  }
+}
