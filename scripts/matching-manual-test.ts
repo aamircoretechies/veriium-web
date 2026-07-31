@@ -179,6 +179,16 @@ async function main(): Promise<void> {
     return record.id;
   }
 
+  async function seedSucceededSetupPayment(jobId: string): Promise<void> {
+    await client.createRecord("payments", {
+      type: "setup_intent",
+      amount: 0,
+      status: "succeeded",
+      stripe_setup_intent_id: `test-setup-${jobId}`,
+      job_id: [jobId],
+    });
+  }
+
   async function seedJob(
     driverId: string,
     fields: Record<string, unknown> = {},
@@ -197,6 +207,7 @@ async function main(): Promise<void> {
       ...fields,
     });
     created.jobs.push(record.id);
+    await seedSucceededSetupPayment(record.id);
     return record.id;
   }
 

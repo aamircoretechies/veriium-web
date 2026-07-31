@@ -706,7 +706,7 @@ async function main(): Promise<void> {
 
     let jobsSeeded = 0;
     for (const driverId of driverIds) {
-      await client.createRecord("jobs", {
+      const jobRecord = await client.createRecord("jobs", {
         status: JOB_STATUS.matched_awaiting_response,
         match_tier: 1,
         match_tier_started_at: new Date().toISOString(),
@@ -717,6 +717,13 @@ async function main(): Promise<void> {
         vehicle_make: "Toyota",
         vehicle_model: "Camry",
         driver_id: [driverId],
+      });
+      await client.createRecord("payments", {
+        type: "setup_intent",
+        amount: 0,
+        status: "succeeded",
+        stripe_setup_intent_id: `staging-setup-${jobRecord.id}`,
+        job_id: [jobRecord.id],
       });
       jobsSeeded += 1;
     }

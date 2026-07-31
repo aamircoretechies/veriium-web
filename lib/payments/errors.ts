@@ -52,6 +52,16 @@ export class PaymentMethodMissingError extends Error {
   }
 }
 
+export class PaymentSetupIncompleteError extends Error {
+  readonly jobId: string;
+
+  constructor(jobId: string) {
+    super(`Job ${jobId} has not completed payment setup`);
+    this.name = "PaymentSetupIncompleteError";
+    this.jobId = jobId;
+  }
+}
+
 export class FinalPriceMissingError extends Error {
   readonly jobId: string;
 

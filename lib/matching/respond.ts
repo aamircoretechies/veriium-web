@@ -4,6 +4,8 @@ import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { getMatchTier, JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { getMechanicById } from "@/lib/mechanics/lookup";
+import { assertJobPaymentSetupComplete } from "@/lib/payments/assert-setup-complete";
+import { PaymentSetupIncompleteError } from "@/lib/payments/errors";
 import { sendSms } from "@/lib/twilio/sms";
 import {
   matchAcceptedDriver,
@@ -72,6 +74,15 @@ async function acceptTier1Assignment(
     throw new MechanicNotAssignedError(job.id, mechanicId);
   }
 
+  try {
+    await assertJobPaymentSetupComplete(job.id);
+  } catch (error) {
+    if (error instanceof PaymentSetupIncompleteError) {
+      throw new InvalidMatchResponseError("ACCEPT", jobStatusOr(job.fields.status));
+    }
+    throw error;
+  }
+
   const updated = await updateJobStatus(job.id, {
     status: JOB_STATUS.accepted_by_mechanic,
   });
@@ -125,6 +136,15 @@ async function acceptBroadcast(
     (tier !== 2 && tier !== 3)
   ) {
     throw new InvalidMatchResponseError("YES", jobStatusOr(job.fields.status));
+  }
+
+  try {
+    await assertJobPaymentSetupComplete(job.id);
+  } catch (error) {
+    if (error instanceof PaymentSetupIncompleteError) {
+      throw new InvalidMatchResponseError("YES", jobStatusOr(job.fields.status));
+    }
+    throw error;
   }
 
   try {

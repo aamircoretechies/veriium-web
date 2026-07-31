@@ -1,3 +1,4 @@
+import { createCancellationReviewActionItem } from "@/lib/action-items/create";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { markMechanicAvailable } from "@/lib/matching/mechanic-update";
@@ -22,6 +23,7 @@ export type ApproveNoShowResult = {
   jobId: string;
   status: string;
   action: "cancelled";
+  feeCharged: boolean;
 };
 
 /** Admin approves no-show report — charge cancellation fee and cancel job (§9.2). */
@@ -32,7 +34,24 @@ export async function approveNoShow(jobId: string): Promise<ApproveNoShowResult>
     throw new InvalidNoShowApprovalError(jobId, job.fields.status);
   }
 
-  await createCancellationFeeIntent(jobId);
+  let feeCharged = false;
+  try {
+    await createCancellationFeeIntent(jobId);
+    feeCharged = true;
+  } catch (error) {
+    console.error(
+      `[no-show/approve] Cancellation fee failed for job ${jobId}:`,
+      error,
+    );
+
+    await createCancellationReviewActionItem({
+      jobId: job.id,
+      title: "No-show cancellation fee failed",
+      notes: `Could not charge cancellation fee for job ${jobId}.`,
+      driver: job.fields.driver_id,
+      mechanic: job.fields.mechanic_id,
+    });
+  }
 
   const updated = await updateJobStatus(jobId, { status: "cancelled" });
 
@@ -45,5 +64,6 @@ export async function approveNoShow(jobId: string): Promise<ApproveNoShowResult>
     jobId,
     status: updated.fields.status,
     action: "cancelled",
+    feeCharged,
   };
 }

@@ -430,6 +430,7 @@ async function main(): Promise<void> {
   const { findPaymentByJobAndType } = await import("@/lib/payments/record");
   const { CANCELLATION_FEE_CENTS } = await import("@/lib/stripe/constants");
   const { getJobById } = await import("@/lib/jobs/lookup");
+  const { getDriverById } = await import("@/lib/drivers/lookup");
   const { handleServiceCommand } = await import("@/lib/service/handle-command");
   const { handleDriverInbound } = await import("@/lib/sms/driver-inbound");
   const { parseSmsCommand } = await import("@/lib/sms/parse-command");
@@ -928,7 +929,65 @@ async function main(): Promise<void> {
 
       const approveResult = await approveNoShow(jobId);
       assert(approveResult.status === JOB_STATUS.cancelled, "cancelled after approve");
+      assert(approveResult.feeCharged === true, "fee charged");
       assert((await countPaymentsByJobAndType(client, jobId, "cancellation_fee")) === 1, "fee PI");
+    },
+  );
+
+  await trackResult(
+    "no-show approve: missing card → cancelled + fee action item",
+    async () => {
+      if (!stripeMock) {
+        return;
+      }
+
+      await resetMechanicAvailable(sharedMechanicId);
+      const driverId = await seedDriver("05b");
+      const mechanicId = await seedMechanic("05b");
+      const jobId = await prepareAcceptedJob(driverId, mechanicId);
+
+      const driver = await getDriverById(driverId);
+      const customerId = driver.fields.stripe_customer_id;
+      if (customerId) {
+        const customer = stripeMock.state.customers.get(customerId);
+        if (customer) {
+          customer.invoice_settings = {
+            ...customer.invoice_settings,
+            default_payment_method: undefined,
+          };
+          stripeMock.state.customers.set(customerId, customer);
+        }
+        for (const [pmId, pm] of stripeMock.state.paymentMethods) {
+          if (pm.customer === customerId) {
+            stripeMock.state.paymentMethods.delete(pmId);
+          }
+        }
+      }
+
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ENROUTE"));
+      await handleServiceCommand(jobId, mechanicId, parseSmsCommand("ARRIVED"));
+
+      const backdatedArrived = new Date(Date.now() - 20_000).toISOString();
+      await client.updateRecord("jobs", jobId, {
+        quote_details: stringifyQuoteDetails({ arrived_at: backdatedArrived }),
+      });
+
+      await reportNoShow(jobId, mechanicId);
+      const approveResult = await approveNoShow(jobId);
+
+      assert(approveResult.status === JOB_STATUS.cancelled, "cancelled after approve");
+      assert(approveResult.feeCharged === false, "fee not charged");
+      assert(
+        (await countActionItemsForJob(
+          jobId,
+          ACTION_ITEM_TYPE.FAILED_CANCELLATION_FEE,
+        )) >= 1,
+        "failed fee action item",
+      );
+      assert(
+        (await countPaymentsByJobAndType(client, jobId, "cancellation_fee")) === 0,
+        "no fee PI",
+      );
     },
   );
 

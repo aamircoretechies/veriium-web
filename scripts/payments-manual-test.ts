@@ -697,6 +697,27 @@ async function main(): Promise<void> {
     assert((await countPaymentsByJobAndType(client, reusableJobId, "setup_intent")) === 1, "still one payment row");
   });
 
+  await trackResult("beginMatching: rejects without setup payment succeeded", async () => {
+    const driverId = await seedDriver("match-guard");
+    const jobId = await seedJob(driverId, {
+      status: JOB_STATUS.matched_awaiting_response,
+    });
+
+    const { beginMatching } = await import("@/lib/matching/start");
+    const { JobNotMatchableError } = await import("@/lib/matching/errors");
+
+    try {
+      await beginMatching(jobId);
+      throw new Error("expected JobNotMatchableError");
+    } catch (error) {
+      assert(error instanceof JobNotMatchableError, "JobNotMatchableError");
+      assert(
+        error.reason === "Payment setup not completed",
+        "payment setup reason",
+      );
+    }
+  });
+
   await trackResult("webhook: setup_intent.succeeded dispatch", async () => {
     await resetMechanicAvailable(mechanicId);
     if (!stripeMock) {

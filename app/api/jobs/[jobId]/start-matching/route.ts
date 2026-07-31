@@ -1,6 +1,8 @@
 import { getEnv } from "@/config/env";
 import { AirtableError } from "@/lib/airtable";
 import { jsonError, jsonOk } from "@/lib/api/response";
+import { ensureDevPaymentSetup } from "@/lib/dev/seed-payment-setup";
+import { isDevBypassMode } from "@/lib/dev/flags";
 import { getJobById } from "@/lib/jobs/lookup";
 import { JOB_STATUS } from "@/lib/jobs/status";
 import { InvalidJobTransitionError } from "@/lib/jobs/transitions";
@@ -21,6 +23,14 @@ type RouteContext = {
 };
 
 export async function POST(request: Request, context: RouteContext) {
+  if (!isDevBypassMode()) {
+    return jsonError(
+      404,
+      "not_found",
+      "Start matching bypass is only available in development or ALLOW_DEV_OTP mode.",
+    );
+  }
+
   const env = getEnv();
   const secret = request.headers.get(MATCHING_DEV_SECRET_HEADER);
 
@@ -46,6 +56,7 @@ export async function POST(request: Request, context: RouteContext) {
       status === JOB_STATUS.draft ||
       status === JOB_STATUS.matched_awaiting_payment
     ) {
+      await ensureDevPaymentSetup(jobId);
       const now = new Date().toISOString();
       await updateJobStatus(jobId, {
         status: JOB_STATUS.matched_awaiting_response,
