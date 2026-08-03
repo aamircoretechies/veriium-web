@@ -1,28 +1,28 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import Link from "next/link";
+
+import { Button } from "@/app/components/ui/button";
 
 interface BookingConfirmationProps {
   jobId: string;
   token: string;
 }
 
+function buildCalendarIcsUrl(jobId: string, token: string): string {
+  return `/api/bookings/${encodeURIComponent(jobId)}/calendar.ics?token=${encodeURIComponent(token)}`;
+}
+
+function buildJobStatusUrl(jobId: string, token: string): string {
+  return `/j/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`;
+}
+
 export default function BookingConfirmation({
   jobId,
   token,
 }: BookingConfirmationProps) {
-  const router = useRouter();
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      router.push(
-        `/j/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`,
-      );
-    }, 4000);
-
-    return () => clearTimeout(timer);
-  }, [jobId, token, router]);
+  const calendarUrl = buildCalendarIcsUrl(jobId, token);
+  const jobStatusUrl = buildJobStatusUrl(jobId, token);
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center font-['Albert_Sans:Regular',sans-serif] px-[20px]">
@@ -54,8 +54,26 @@ export default function BookingConfirmation({
           <br className="hidden md:block" /> your car.
         </p>
 
-        <p className="mt-12 text-gray-400 text-sm animate-pulse">
-          Redirecting to your Job Status page...
+        <div className="mt-10 flex flex-col gap-3 w-full max-w-[400px]">
+          <Button
+            asChild
+            className="w-full bg-[#ffa270] hover:bg-[#ff8f52] text-black font-['Albert_Sans:Bold',sans-serif] font-bold text-[16px] h-12"
+          >
+            <a href={calendarUrl}>Add to calendar</a>
+          </Button>
+
+          <Button
+            asChild
+            variant="outline"
+            className="w-full font-['Albert_Sans:Bold',sans-serif] font-bold text-[16px] h-12"
+          >
+            <Link href={jobStatusUrl}>View job status</Link>
+          </Button>
+        </div>
+
+        <p className="mt-8 text-gray-500 text-sm leading-relaxed">
+          Save the appointment to your calendar, then track your repair anytime
+          from your job page.
         </p>
       </div>
     </div>

@@ -21,11 +21,14 @@ export async function getOrCreateStripeCustomer(
   }
 
   const stripe = getStripe();
-  const customer = await stripe.customers.create({
-    phone: input.phone,
-    name: input.name ?? undefined,
-    metadata: { driverId: input.driverId },
-  });
+  const customer = await stripe.customers.create(
+    {
+      phone: input.phone,
+      name: input.name ?? undefined,
+      metadata: { driverId: input.driverId },
+    },
+    { idempotencyKey: `driver-${input.driverId}` },
+  );
 
   const updateFields = updateDriverSchema.parse({
     stripe_customer_id: customer.id,

@@ -29,6 +29,40 @@ async function parseApiError(res: Response): Promise<string> {
   }
 }
 
+const setupIntentInflight = new Map<string, Promise<PaymentSetupResponse>>();
+
+function fetchSetupIntent(
+  jobId: string,
+  token: string,
+): Promise<PaymentSetupResponse> {
+  const key = `${jobId}:${token}`;
+  const existing = setupIntentInflight.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = fetch(
+    `/api/bookings/${encodeURIComponent(jobId)}/payment`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    },
+  ).then(async (res) => {
+    if (!res.ok) {
+      throw new Error(await parseApiError(res));
+    }
+    return (await res.json()) as PaymentSetupResponse;
+  });
+
+  setupIntentInflight.set(key, promise);
+  void promise.finally(() => {
+    setupIntentInflight.delete(key);
+  });
+
+  return promise;
+}
+
 function PaymentSetupForm({
   jobId,
   token,
@@ -109,26 +143,17 @@ export default function PaymentGateway({
       setError("");
 
       try {
-        const res = await fetch(`/api/bookings/${encodeURIComponent(jobId)}/payment`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        });
-
-        if (!res.ok) {
-          if (!cancelled) {
-            setError(await parseApiError(res));
-          }
-          return;
-        }
-
-        const data = (await res.json()) as PaymentSetupResponse;
+        const data = await fetchSetupIntent(jobId, token);
         if (!cancelled) {
           setClientSecret(data.clientSecret);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          setError("Unable to start payment setup. Please try again.");
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to start payment setup. Please try again.",
+          );
         }
       } finally {
         if (!cancelled) {

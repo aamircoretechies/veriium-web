@@ -26,6 +26,30 @@ const REUSABLE_SETUP_STATUSES = new Set([
   "requires_action",
 ]);
 
+async function tryReuseExistingSetupIntent(
+  jobId: string,
+  setupIntentId: string,
+): Promise<SetupIntentResult | null> {
+  const stripe = getStripe();
+  const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+
+  if (setupIntent.status === "succeeded") {
+    throw new PaymentAlreadyCompletedError(jobId);
+  }
+
+  if (
+    setupIntent.client_secret &&
+    REUSABLE_SETUP_STATUSES.has(setupIntent.status)
+  ) {
+    return {
+      clientSecret: setupIntent.client_secret,
+      setupIntentId: setupIntent.id,
+    };
+  }
+
+  return null;
+}
+
 export async function createSetupIntentForJob(
   jobId: string,
 ): Promise<SetupIntentResult> {
@@ -54,23 +78,12 @@ export async function createSetupIntentForJob(
     status === JOB_STATUS.matched_awaiting_payment &&
     existingPayment?.fields.stripe_setup_intent_id
   ) {
-    const stripe = getStripe();
-    const setupIntent = await stripe.setupIntents.retrieve(
+    const reused = await tryReuseExistingSetupIntent(
+      jobId,
       existingPayment.fields.stripe_setup_intent_id,
     );
-
-    if (setupIntent.status === "succeeded") {
-      throw new PaymentAlreadyCompletedError(jobId);
-    }
-
-    if (
-      setupIntent.client_secret &&
-      REUSABLE_SETUP_STATUSES.has(setupIntent.status)
-    ) {
-      return {
-        clientSecret: setupIntent.client_secret,
-        setupIntentId: setupIntent.id,
-      };
+    if (reused) {
+      return reused;
     }
   }
 
@@ -89,6 +102,20 @@ export async function createSetupIntentForJob(
     phone: driver.fields.phone_number!,
     name: driver.fields.name,
   });
+
+  const paymentAfterCustomer = await findPaymentByJobAndType(
+    jobId,
+    "setup_intent",
+  );
+  if (paymentAfterCustomer?.fields.stripe_setup_intent_id) {
+    const reused = await tryReuseExistingSetupIntent(
+      jobId,
+      paymentAfterCustomer.fields.stripe_setup_intent_id,
+    );
+    if (reused) {
+      return reused;
+    }
+  }
 
   const stripe = getStripe();
   const setupIntent = await stripe.setupIntents.create(
