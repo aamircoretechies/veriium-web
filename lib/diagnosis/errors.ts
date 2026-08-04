@@ -1,5 +1,8 @@
 export type InputValidationCode = "R1" | "R2" | "R4";
 
+export const DIAGNOSIS_EMPTY_INPUT_MESSAGE =
+  "Please briefly describe your car's issue using at least one word, such as \"engine noise.\"";
+
 export const DIAGNOSIS_DETAIL_MESSAGE =
   "Can you give us a bit more detail? Describe what you hear, see, or feel when the problem happens.";
 

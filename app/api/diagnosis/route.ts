@@ -1,6 +1,9 @@
-import { z } from "zod";
 import { jsonError, jsonOk } from "@/lib/api/response";
-import { AiDiagnosisError, InputValidationError } from "@/lib/diagnosis/errors";
+import {
+  AiDiagnosisError,
+  DIAGNOSIS_EMPTY_INPUT_MESSAGE,
+  InputValidationError,
+} from "@/lib/diagnosis/errors";
 import { runDiagnosis } from "@/lib/diagnosis/run";
 import { diagnosisRequestSchema } from "@/types/api/diagnosis";
 
@@ -14,11 +17,7 @@ export async function POST(request: Request) {
 
   const parsed = diagnosisRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return jsonError(
-      400,
-      "validation_error",
-      z.prettifyError(parsed.error),
-    );
+    return jsonError(400, "validation_error", DIAGNOSIS_EMPTY_INPUT_MESSAGE);
   }
 
   try {
