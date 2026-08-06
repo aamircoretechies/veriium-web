@@ -108,6 +108,7 @@ export const updateMechanicSchema = z
     background_check_status: backgroundCheckStatusSchema.optional(),
     approved: z.boolean().optional(),
     approved_at: z.string().datetime().optional(),
+    setup_wizard_completed_at: z.string().datetime().optional(),
     last_assigned_at: z.string().datetime().optional(),
     name: z.string().min(1).optional(),
     phone_number: z.string().min(1).optional(),

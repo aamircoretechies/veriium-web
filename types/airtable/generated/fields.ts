@@ -49,6 +49,7 @@ export const FIELDS = {
     tips_earned: "tips_earned",
     no_show_compensation: "no_show_compensation",
     created_at: "created_at",
+    setup_wizard_completed_at: "setup_wizard_completed_at",
     "Action Items": "Action Items",
   },
   Payments: {

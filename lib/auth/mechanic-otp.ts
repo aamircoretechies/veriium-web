@@ -69,11 +69,7 @@ export function deriveAccountState(
 }
 
 export function isSetupComplete(fields: MechanicFields): boolean {
-  return Boolean(
-    fields.profile_photo_url?.trim() &&
-      fields.service_zip_codes?.trim() &&
-      fields.tools_confirmed?.length,
-  );
+  return Boolean(fields.setup_wizard_completed_at?.trim());
 }
 
 export function toMechanicAuthSummary(

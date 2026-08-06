@@ -34,7 +34,6 @@ interface MechanicAuthContextType {
   signIn: (user: MechanicUser, token?: string) => void;
   signOut: () => void;
   setAvailability: (on: boolean) => void;
-  completeSetup: () => void;
   refreshMechanic: () => Promise<void>;
 }
 
@@ -226,15 +225,6 @@ export function MechanicAuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const completeSetup = useCallback(() => {
-    setMechanic((prev) => {
-      if (!prev) return prev;
-      const updated = { ...prev, setupComplete: true, availabilityOn: false };
-      persistSession(updated);
-      return updated;
-    });
-  }, []);
-
   return (
     <MechanicAuthContext.Provider
       value={{
@@ -243,7 +233,6 @@ export function MechanicAuthProvider({ children }: { children: ReactNode }) {
         signIn,
         signOut,
         setAvailability,
-        completeSetup,
         refreshMechanic,
       }}
     >

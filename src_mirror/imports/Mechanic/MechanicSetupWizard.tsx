@@ -1,6 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useMechanicAuth } from "./MechanicAuthContext";
+import type { MechanicSetupResponse } from "@/types/api/mechanic-setup";
+
+const TOKEN_KEY = "veriium_mechanic_token";
 
 const STEPS = [
   { id: 1, title: "Welcome to Veriium!", subtitle: "Let's get your account ready in 2 quick steps." },
@@ -8,17 +11,74 @@ const STEPS = [
   { id: 3, title: "Confirm Your Service Area", subtitle: "Make sure your coverage area is accurate so customers nearby can find you." },
 ];
 
+async function parseApiError(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    return data?.error?.message ?? "Something went wrong. Please try again.";
+  } catch {
+    return "Something went wrong. Please try again.";
+  }
+}
+
 export default function MechanicSetupWizard() {
-  const { mechanic, completeSetup } = useMechanicAuth();
+  const { mechanic, refreshMechanic, signOut } = useMechanicAuth();
   const [step, setStep] = useState(1);
   const [bankName, setBankName] = useState("");
   const [accountLast4, setAccountLast4] = useState("");
   const [routingNote, setRoutingNote] = useState("Direct Deposit");
-  const [primaryZip, setPrimaryZip] = useState("30301");
+  const [primaryZip, setPrimaryZip] = useState("30043");
   const [serviceRadius, setServiceRadius] = useState("20");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleComplete = () => {
-    completeSetup();
+  const handleComplete = async () => {
+    const zip = primaryZip.trim();
+    if (!/^\d{5}$/.test(zip)) {
+      setError("Enter a valid 5-digit ZIP code.");
+      return;
+    }
+
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      signOut();
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/mechanics/setup", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ serviceZipCodes: [zip] }),
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        signOut();
+        return;
+      }
+
+      if (!res.ok) {
+        setError(await parseApiError(res));
+        return;
+      }
+
+      const data = (await res.json()) as MechanicSetupResponse;
+      if (!data.mechanic.setupComplete) {
+        setError("Setup could not be confirmed. Please try again or contact support.");
+        return;
+      }
+
+      await refreshMechanic();
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -56,12 +116,16 @@ export default function MechanicSetupWizard() {
           )}
 
           {step === 3 && (
-            <div className="flex flex-col gap-5"><div className="flex flex-col gap-4"><div className="flex flex-col gap-1.5"><label className="text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black">Primary ZIP Code</label><input type="text" placeholder="e.g. 30301" value={primaryZip} onChange={(e) => setPrimaryZip(e.target.value)} className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5" /></div><div className="flex flex-col gap-1.5"><label className="text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black">Service Radius (miles)</label><input type="number" min="1" max="100" placeholder="e.g. 20" value={serviceRadius} onChange={(e) => setServiceRadius(e.target.value)} className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5" /></div></div><div className="bg-[#f7f7f7] border border-[#ebebeb] rounded-[12px] p-4 flex flex-col gap-2"><p className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[14px] text-black">🎉 You're almost there!</p><p className="text-[13px] text-[#555] leading-[1.65]">After completing setup, your availability will start as <strong>OFF</strong>. Head to your dashboard and flip the toggle when you're ready to receive job requests.</p></div></div>
+            <div className="flex flex-col gap-5"><div className="flex flex-col gap-4"><div className="flex flex-col gap-1.5"><label className="text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black">Primary ZIP Code</label><input type="text" placeholder="e.g. 30043" value={primaryZip} onChange={(e) => setPrimaryZip(e.target.value)} className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5" maxLength={5} /></div><div className="flex flex-col gap-1.5"><label className="text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black">Service Radius (miles)</label><input type="number" min="1" max="100" placeholder="e.g. 20" value={serviceRadius} onChange={(e) => setServiceRadius(e.target.value)} className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5" /></div></div><div className="bg-[#f7f7f7] border border-[#ebebeb] rounded-[12px] p-4 flex flex-col gap-2"><p className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[14px] text-black">🎉 You're almost there!</p><p className="text-[13px] text-[#555] leading-[1.65]">After completing setup, your availability will start as <strong>OFF</strong>. Head to your dashboard and flip the toggle when you're ready to receive job requests.</p></div></div>
+          )}
+
+          {error && (
+            <p className="text-[13px] text-[#e11d48] leading-[1.6]">{error}</p>
           )}
 
           <div className="flex gap-3 mt-2">
-            {step > 1 && <button onClick={() => setStep(step - 1)} className="flex-1 border border-[#d2d2d2] hover:bg-[#f5f5f5] text-black text-[15px] py-3.5 rounded-[12px]">Back</button>}
-            {step < STEPS.length ? <button onClick={() => setStep(step + 1)} className="flex-[2] bg-[#ffa270] hover:brightness-110 text-black font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] py-3.5 rounded-[12px]">Continue</button> : <button onClick={handleComplete} className="flex-[2] bg-black hover:bg-[#222] text-white font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] py-3.5 rounded-[12px]">Go to Dashboard →</button>}
+            {step > 1 && <button onClick={() => setStep(step - 1)} disabled={submitting} className="flex-1 border border-[#d2d2d2] hover:bg-[#f5f5f5] text-black text-[15px] py-3.5 rounded-[12px] disabled:opacity-50">Back</button>}
+            {step < STEPS.length ? <button onClick={() => setStep(step + 1)} className="flex-[2] bg-[#ffa270] hover:brightness-110 text-black font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] py-3.5 rounded-[12px]">Continue</button> : <button onClick={() => void handleComplete()} disabled={submitting} className="flex-[2] bg-black hover:bg-[#222] text-white font-['Albert_Sans:Bold',sans-serif] font-bold text-[15px] py-3.5 rounded-[12px] disabled:opacity-50">{submitting ? "Saving…" : "Go to Dashboard →"}</button>}
           </div>
         </div>
       </div>

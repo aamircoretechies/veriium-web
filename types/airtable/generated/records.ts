@@ -51,6 +51,7 @@ export type MechanicsRecord = {
   tips_earned?: number;
   no_show_compensation?: number;
   created_at?: string;
+  setup_wizard_completed_at?: string;
   "Action Items"?: string[];
 };
 
