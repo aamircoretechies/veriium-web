@@ -53,7 +53,7 @@ export type VerifyMechanicOtpResult = {
   mechanic: MechanicAuthSummary;
 };
 
-function deriveAccountState(
+export function deriveAccountState(
   fields: MechanicFields,
 ): MechanicStatus {
   if (fields.background_check_status === "failed") {
@@ -68,7 +68,7 @@ function deriveAccountState(
   return "application_submitted";
 }
 
-function isSetupComplete(fields: MechanicFields): boolean {
+export function isSetupComplete(fields: MechanicFields): boolean {
   return Boolean(
     fields.profile_photo_url?.trim() &&
       fields.service_zip_codes?.trim() &&
@@ -76,7 +76,7 @@ function isSetupComplete(fields: MechanicFields): boolean {
   );
 }
 
-function toAuthSummary(
+export function toMechanicAuthSummary(
   record: AirtableRecord<MechanicFields>,
 ): MechanicAuthSummary {
   const { fields } = record;
@@ -156,6 +156,6 @@ export async function verifyMechanicOtp(
 
   return {
     token,
-    mechanic: toAuthSummary(mechanic),
+    mechanic: toMechanicAuthSummary(mechanic),
   };
 }

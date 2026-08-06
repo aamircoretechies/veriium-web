@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isValidUsPhone } from "@/lib/phone";
+import { MECHANIC_STATUSES } from "@/types/airtable/enums";
 
 const usPhoneSchema = z
   .string()
@@ -24,3 +25,20 @@ export type VerifyMechanicCodeRequest = z.infer<typeof verifyMechanicCodeSchema>
 export type SetMechanicAvailabilityRequest = z.infer<
   typeof setMechanicAvailabilitySchema
 >;
+
+export const mechanicAuthSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  phone: z.string(),
+  email: z.string(),
+  accountState: z.enum(MECHANIC_STATUSES),
+  setupComplete: z.boolean(),
+  availabilityOn: z.boolean(),
+});
+
+export const mechanicMeResponseSchema = z.object({
+  mechanic: mechanicAuthSummarySchema,
+});
+
+export type MechanicAuthSummaryResponse = z.infer<typeof mechanicAuthSummarySchema>;
+export type MechanicMeResponse = z.infer<typeof mechanicMeResponseSchema>;

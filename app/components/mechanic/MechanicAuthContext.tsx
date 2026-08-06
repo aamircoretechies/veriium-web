@@ -8,6 +8,7 @@ import {
   useCallback,
   ReactNode,
 } from "react";
+import type { MechanicMeResponse } from "@/types/api/mechanic-auth";
 
 export type MechanicAccountState =
   | "application_submitted"
@@ -34,6 +35,7 @@ interface MechanicAuthContextType {
   signOut: () => void;
   setAvailability: (on: boolean) => void;
   completeSetup: () => void;
+  refreshMechanic: () => Promise<void>;
 }
 
 const TOKEN_KEY = "veriium_mechanic_token";
@@ -110,22 +112,48 @@ function clearSession() {
   localStorage.removeItem(USER_KEY);
 }
 
+function readCachedUser(): MechanicUser | null {
+  try {
+    const userJson = localStorage.getItem(USER_KEY);
+    if (!userJson) return null;
+    return JSON.parse(userJson) as MechanicUser;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchMechanicFromServer(
+  token: string,
+): Promise<
+  | { ok: true; mechanic: MechanicUser }
+  | { ok: false; status: number }
+  | { ok: false; networkError: true }
+> {
+  try {
+    const res = await fetch("/api/mechanics/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, status: res.status };
+    }
+
+    if (!res.ok) {
+      console.warn(`[MechanicAuth] /api/mechanics/me returned ${res.status}`);
+      return { ok: false, networkError: true };
+    }
+
+    const data = (await res.json()) as MechanicMeResponse;
+    return { ok: true, mechanic: data.mechanic };
+  } catch (error) {
+    console.warn("[MechanicAuth] Failed to hydrate session from server:", error);
+    return { ok: false, networkError: true };
+  }
+}
+
 export function MechanicAuthProvider({ children }: { children: ReactNode }) {
   const [mechanic, setMechanic] = useState<MechanicUser | null>(null);
   const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    try {
-      const token = localStorage.getItem(TOKEN_KEY);
-      const userJson = localStorage.getItem(USER_KEY);
-      if (token && userJson) {
-        setMechanic(JSON.parse(userJson) as MechanicUser);
-      }
-    } catch {
-      clearSession();
-    }
-    setHydrated(true);
-  }, []);
 
   const signIn = useCallback((user: MechanicUser, token?: string) => {
     setMechanic({ ...user });
@@ -138,6 +166,56 @@ export function MechanicAuthProvider({ children }: { children: ReactNode }) {
     setMechanic(null);
     clearSession();
   }, []);
+
+  const refreshMechanic = useCallback(async () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+
+    const result = await fetchMechanicFromServer(token);
+    if (result.ok) {
+      signIn(result.mechanic, token);
+      return;
+    }
+
+    if ("status" in result) {
+      signOut();
+    }
+  }, [signIn, signOut]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrate() {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) {
+        if (!cancelled) setHydrated(true);
+        return;
+      }
+
+      const cachedUser = readCachedUser();
+      if (cachedUser && !cancelled) {
+        setMechanic(cachedUser);
+      }
+
+      const result = await fetchMechanicFromServer(token);
+      if (cancelled) return;
+
+      if (result.ok) {
+        signIn(result.mechanic, token);
+      } else if ("status" in result) {
+        clearSession();
+        setMechanic(null);
+      }
+
+      setHydrated(true);
+    }
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signIn]);
 
   const setAvailability = useCallback((on: boolean) => {
     setMechanic((prev) => {
@@ -159,7 +237,15 @@ export function MechanicAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <MechanicAuthContext.Provider
-      value={{ mechanic, hydrated, signIn, signOut, setAvailability, completeSetup }}
+      value={{
+        mechanic,
+        hydrated,
+        signIn,
+        signOut,
+        setAvailability,
+        completeSetup,
+        refreshMechanic,
+      }}
     >
       {children}
     </MechanicAuthContext.Provider>
