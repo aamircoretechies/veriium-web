@@ -5,12 +5,17 @@ import {
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { StripeElementsProvider } from "@/app/components/stripe/StripeElementsProvider";
 import { Button } from "@/app/components/ui/button";
-import type { PaymentSetupResponse } from "@/types/api/payment";
+import {
+  BookingPaymentApiError,
+  completeBookingPaymentClient,
+  fetchPaymentSetupClient,
+} from "@/lib/bookings/complete-payment-client";
 
 import Footer from "../../../app/components/Footer";
 
@@ -20,41 +25,27 @@ interface PaymentGatewayProps {
   onBack?: () => void;
 }
 
-async function parseApiError(res: Response): Promise<string> {
-  try {
-    const data = await res.json();
-    return data?.error?.message ?? "Something went wrong. Please try again.";
-  } catch {
-    return "Something went wrong. Please try again.";
-  }
+function buildConfirmationUrl(jobId: string, token: string): string {
+  return `/public/confirmation/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`;
 }
 
-const setupIntentInflight = new Map<string, Promise<PaymentSetupResponse>>();
+function buildSummaryUrl(jobId: string, token: string): string {
+  return `/public/summary?jobId=${encodeURIComponent(jobId)}&token=${encodeURIComponent(token)}`;
+}
 
-function fetchSetupIntent(
-  jobId: string,
-  token: string,
-): Promise<PaymentSetupResponse> {
+const setupIntentInflight = new Map<
+  string,
+  ReturnType<typeof fetchPaymentSetupClient>
+>();
+
+function fetchSetupIntent(jobId: string, token: string) {
   const key = `${jobId}:${token}`;
   const existing = setupIntentInflight.get(key);
   if (existing) {
     return existing;
   }
 
-  const promise = fetch(
-    `/api/bookings/${encodeURIComponent(jobId)}/payment`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    },
-  ).then(async (res) => {
-    if (!res.ok) {
-      throw new Error(await parseApiError(res));
-    }
-    return (await res.json()) as PaymentSetupResponse;
-  });
-
+  const promise = fetchPaymentSetupClient(jobId, token);
   setupIntentInflight.set(key, promise);
   void promise.finally(() => {
     setupIntentInflight.delete(key);
@@ -66,9 +57,11 @@ function fetchSetupIntent(
 function PaymentSetupForm({
   jobId,
   token,
+  setupIntentId,
 }: {
   jobId: string;
   token: string;
+  setupIntentId: string;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -84,7 +77,7 @@ function PaymentSetupForm({
     setSubmitting(true);
     setError("");
 
-    const returnUrl = `${window.location.origin}/public/confirmation/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`;
+    const returnUrl = `${window.location.origin}${buildConfirmationUrl(jobId, token)}`;
 
     const { error: confirmError } = await stripe.confirmSetup({
       elements,
@@ -98,9 +91,17 @@ function PaymentSetupForm({
       return;
     }
 
-    router.push(
-      `/public/confirmation/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`,
-    );
+    try {
+      await completeBookingPaymentClient(jobId, token, setupIntentId);
+      router.push(buildConfirmationUrl(jobId, token));
+    } catch (err) {
+      setError(
+        err instanceof BookingPaymentApiError
+          ? err.message
+          : "Unable to confirm your payment method. Please try again.",
+      );
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -132,8 +133,10 @@ export default function PaymentGateway({
 }: PaymentGatewayProps) {
   const router = useRouter();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [setupIntentId, setSetupIntentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,20 +144,38 @@ export default function PaymentGateway({
     async function initSetupIntent() {
       setLoading(true);
       setError("");
+      setErrorCode(null);
 
       try {
         const data = await fetchSetupIntent(jobId, token);
         if (!cancelled) {
           setClientSecret(data.clientSecret);
+          setSetupIntentId(data.setupIntentId);
         }
       } catch (err) {
-        if (!cancelled) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Unable to start payment setup. Please try again.",
-          );
+        if (cancelled) {
+          return;
         }
+
+        if (err instanceof BookingPaymentApiError) {
+          if (err.code === "payment_already_completed") {
+            router.replace(buildConfirmationUrl(jobId, token));
+            return;
+          }
+          if (err.code === "invalid_token") {
+            router.replace("/public?error=invalid_link");
+            return;
+          }
+          setErrorCode(err.code);
+          setError(err.message);
+          return;
+        }
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to start payment setup. Please try again.",
+        );
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -167,7 +188,7 @@ export default function PaymentGateway({
     return () => {
       cancelled = true;
     };
-  }, [jobId, token]);
+  }, [jobId, router, token]);
 
   return (
     <div className="min-h-screen bg-white flex flex-col font-['Albert_Sans:Regular',sans-serif]">
@@ -207,12 +228,24 @@ export default function PaymentGateway({
         {!loading && error && (
           <div className="w-full border border-red-200 rounded-[12px] bg-red-50 px-4 py-3 mb-[60px]">
             <p className="text-[14px] text-red-600">{error}</p>
+            {errorCode === "job_not_payable" && (
+              <Link
+                href={buildSummaryUrl(jobId, token)}
+                className="mt-3 inline-block text-[14px] font-['Albert_Sans:Bold',sans-serif] font-bold text-black underline"
+              >
+                Return to booking summary
+              </Link>
+            )}
           </div>
         )}
 
-        {!loading && clientSecret && (
+        {!loading && clientSecret && setupIntentId && (
           <StripeElementsProvider clientSecret={clientSecret}>
-            <PaymentSetupForm jobId={jobId} token={token} />
+            <PaymentSetupForm
+              jobId={jobId}
+              token={token}
+              setupIntentId={setupIntentId}
+            />
           </StripeElementsProvider>
         )}
       </div>

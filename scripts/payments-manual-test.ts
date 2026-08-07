@@ -25,11 +25,14 @@
  *
  * SetupIntent happy path:
  *   1. Complete diagnosis + booking → /public/match?jobId=…&token=…
- *   2. Continue to payment → click "Secure My Repair"
- *   3. POST /api/bookings/{jobId}/payment returns clientSecret
- *   4. Enter test card 4242 4242 4242 4242 in Stripe Elements
- *   5. Verify Dashboard: setup_intent.succeeded
- *   6. Verify Airtable: job status=matched, cancellation_policy_accepted_at set,
+ *   2. Continue to summary → /public/summary?jobId=…&token=…
+ *   3. Continue to payment → click "Secure My Repair"
+ *   4. POST /api/bookings/{jobId}/payment returns clientSecret + setupIntentId
+ *   5. Enter test card 4242 4242 4242 4242 in Stripe Elements
+ *   6. Verify Network: POST /api/bookings/{jobId}/payment/complete returns 200
+ *      (client calls this after confirmSetup — webhook is backup, not required in dev)
+ *   7. Verify Dashboard: setup_intent.succeeded
+ *   8. Verify Airtable: job status=accepted_by_mechanic, policy_disclosed_at set,
  *      driver stripe_customer_id set, Payments row type=setup status=succeeded
  *
  * Idempotency (CLI):
