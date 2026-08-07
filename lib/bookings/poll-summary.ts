@@ -59,6 +59,13 @@ export function shouldPollBookingPhase(phase: MatchUiPhase): boolean {
   return phase === "searching";
 }
 
+export function shouldShowMechanicMatchCard(summary: BookingSummary): boolean {
+  return (
+    summary.status === JOB_STATUS.accepted_by_mechanic &&
+    summary.mechanic != null
+  );
+}
+
 export class BookingSummaryFetchError extends Error {
   readonly code: string;
 

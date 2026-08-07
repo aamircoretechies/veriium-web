@@ -10,6 +10,7 @@ import {
   fetchBookingSummary,
   getMatchUiPhase,
   shouldPollBookingPhase,
+  shouldShowMechanicMatchCard,
   type MatchUiPhase,
 } from "@/lib/bookings/poll-summary";
 import type { BookingSummary } from "@/types/api/booking-summary";
@@ -28,12 +29,12 @@ function MatchPageContent() {
   const handleContinue = useCallback(() => {
     if (jobId && token) {
       router.push(
-        `/public/payment?jobId=${encodeURIComponent(jobId)}&token=${encodeURIComponent(token)}`,
+        `/public/summary?jobId=${encodeURIComponent(jobId)}&token=${encodeURIComponent(token)}`,
       );
       return;
     }
 
-    router.push("/public/payment");
+    router.push("/public/summary");
   }, [jobId, router, token]);
 
   const handleGoHome = useCallback(() => {
@@ -142,7 +143,11 @@ function MatchPageContent() {
       summary={summary}
       errorMessage={errorMessage}
       onBack={() => router.back()}
-      onContinue={phase === "matched" ? handleContinue : undefined}
+      onContinue={
+        summary && shouldShowMechanicMatchCard(summary)
+          ? handleContinue
+          : undefined
+      }
       onGoHome={handleGoHome}
     />
   );
