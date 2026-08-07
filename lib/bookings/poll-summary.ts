@@ -1,6 +1,8 @@
+import { formatScheduledTimeForDisplay } from "@/lib/bookings/scheduled-time";
 import { JOB_STATUS } from "@/lib/jobs/status";
 import type { JobStatus } from "@/lib/jobs/status";
 import type { BookingSummary } from "@/types/api/booking-summary";
+import type { ServiceType } from "@/types/airtable/enums";
 
 export const BOOKING_POLL_INTERVAL_MS = 4000;
 
@@ -60,10 +62,43 @@ export function shouldPollBookingPhase(phase: MatchUiPhase): boolean {
 }
 
 export function shouldShowMechanicMatchCard(summary: BookingSummary): boolean {
+  return canAccessBookingSummary(summary);
+}
+
+export function canAccessBookingSummary(summary: BookingSummary): boolean {
   return (
     summary.status === JOB_STATUS.accepted_by_mechanic &&
     summary.mechanic != null
   );
+}
+
+export function formatBookingVehicleLabel(summary: BookingSummary): string {
+  const parts = [
+    summary.vehicleYear,
+    summary.vehicleMake,
+    summary.vehicleModel,
+  ].filter((part) => part !== undefined && part !== "");
+
+  return parts.length > 0 ? parts.join(" ") : "Vehicle details pending";
+}
+
+export function formatBookingServiceTypeLabel(
+  serviceType?: ServiceType,
+): string {
+  if (serviceType === "mobile_repair") {
+    return "Mobile repair";
+  }
+  if (serviceType === "dropoff") {
+    return "Shop drop-off";
+  }
+  return "Service details pending";
+}
+
+export function formatBookingScheduledTime(scheduledTime?: string): string {
+  if (!scheduledTime?.trim()) {
+    return "As soon as possible";
+  }
+  return formatScheduledTimeForDisplay(scheduledTime);
 }
 
 export class BookingSummaryFetchError extends Error {
