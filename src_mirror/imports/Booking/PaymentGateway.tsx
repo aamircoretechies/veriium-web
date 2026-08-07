@@ -16,6 +16,10 @@ import {
   completeBookingPaymentClient,
   fetchPaymentSetupClient,
 } from "@/lib/bookings/complete-payment-client";
+import {
+  buildConfirmationUrl,
+  buildSummaryUrl,
+} from "@/lib/bookings/urls";
 
 import Footer from "../../../app/components/Footer";
 
@@ -23,14 +27,6 @@ interface PaymentGatewayProps {
   jobId: string;
   token: string;
   onBack?: () => void;
-}
-
-function buildConfirmationUrl(jobId: string, token: string): string {
-  return `/public/confirmation/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`;
-}
-
-function buildSummaryUrl(jobId: string, token: string): string {
-  return `/public/summary?jobId=${encodeURIComponent(jobId)}&token=${encodeURIComponent(token)}`;
 }
 
 const setupIntentInflight = new Map<

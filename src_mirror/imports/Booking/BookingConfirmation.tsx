@@ -9,22 +9,16 @@ import {
   BookingPaymentApiError,
   completeBookingPaymentClient,
 } from "@/lib/bookings/complete-payment-client";
+import {
+  buildCalendarIcsUrl,
+  buildConfirmationUrl,
+  buildJobStatusUrl,
+  buildPaymentUrl,
+} from "@/lib/bookings/urls";
 
 interface BookingConfirmationProps {
   jobId: string;
   token: string;
-}
-
-function buildCalendarIcsUrl(jobId: string, token: string): string {
-  return `/api/bookings/${encodeURIComponent(jobId)}/calendar.ics?token=${encodeURIComponent(token)}`;
-}
-
-function buildJobStatusUrl(jobId: string, token: string): string {
-  return `/j/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`;
-}
-
-function buildConfirmationUrl(jobId: string, token: string): string {
-  return `/public/confirmation/${encodeURIComponent(jobId)}?token=${encodeURIComponent(token)}`;
 }
 
 function BookingConfirmationContent({
@@ -97,9 +91,7 @@ function BookingConfirmationContent({
             asChild
             className="bg-[#ffa270] hover:bg-[#ff8f52] text-black font-['Albert_Sans:Bold',sans-serif] font-bold"
           >
-            <Link
-              href={`/public/payment?jobId=${encodeURIComponent(jobId)}&token=${encodeURIComponent(token)}`}
-            >
+            <Link href={buildPaymentUrl(jobId, token)}>
               Return to payment
             </Link>
           </Button>

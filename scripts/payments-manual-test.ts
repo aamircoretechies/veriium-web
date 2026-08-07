@@ -34,6 +34,15 @@
  *   7. Verify Dashboard: setup_intent.succeeded
  *   8. Verify Airtable: job status=accepted_by_mechanic, policy_disclosed_at set,
  *      driver stripe_customer_id set, Payments row type=setup status=succeeded
+ *   9. Land on /public/confirmation/{jobId}?token=… — "You're all set!" success UI
+ *  10. Click "Add to calendar" — GET /api/bookings/{jobId}/calendar.ics?token=…
+ *      returns 200 with Content-Type: text/calendar
+ *  11. Click "View job status" — /j/{jobId}?token=… loads without invalid_link redirect
+ *
+ * Confirmation guards (browser):
+ *   - Open confirmation URL before payment → redirected to /public/payment
+ *   - Open confirmation with invalid token → redirected to /public?error=invalid_link
+ *   - 3DS card 4000 0025 0000 3155 → lands with ?setup_intent=…, completes, shows success
  *
  * Idempotency (CLI):
  *   stripe trigger setup_intent.succeeded   # replay → no duplicate payment rows
