@@ -521,6 +521,7 @@ async function main(): Promise<void> {
   const { getDriverById } = await import("@/lib/drivers/lookup");
   const {
     JobNotPayableError,
+    PaymentAlreadyCompletedError,
   } = await import("@/lib/payments/errors");
 
   const client = getAirtableClient();
@@ -599,7 +600,7 @@ async function main(): Promise<void> {
     );
   });
 
-  await trackResult("errors: JobNotPayableError for non-draft job", async () => {
+  await trackResult("errors: JobNotPayableError for matched_awaiting_response job", async () => {
     const driverId = await seedDriver("01");
     const jobId = await seedJob(driverId, {
       status: JOB_STATUS.matched_awaiting_response,
@@ -643,6 +644,21 @@ async function main(): Promise<void> {
     );
   });
 
+  await trackResult("createSetupIntentForJob: accepted_by_mechanic → matched_awaiting_payment", async () => {
+    const driverId = await seedDriver("accepted");
+    const acceptedMechanicId = await seedMechanic();
+    const jobId = await seedJob(driverId, {
+      status: JOB_STATUS.accepted_by_mechanic,
+      mechanic_id: [acceptedMechanicId],
+    });
+    const result = await createSetupIntentForJob(jobId);
+    const job = await getJobById(jobId);
+
+    assert(Boolean(result.clientSecret), "clientSecret");
+    assert(job.fields.status === JOB_STATUS.matched_awaiting_payment, "status");
+    assert(Boolean(job.fields.policy_disclosed_at), "policy timestamp");
+  });
+
   let reusableJobId = "";
   let reusableSetupIntentId = "";
 
@@ -657,7 +673,7 @@ async function main(): Promise<void> {
     reusableSetupIntentId = first.setupIntentId;
   });
 
-  await trackResult("completeSetup: setup_intent.succeeded → matched + driver customer", async () => {
+  await trackResult("completeSetup: setup_intent.succeeded → accepted_by_mechanic + driver customer", async () => {
     await resetMechanicAvailable(mechanicId);
     const setupIntent = stripeMock
       ? stripeMock.succeedSetupIntent(reusableSetupIntentId)
@@ -681,7 +697,7 @@ async function main(): Promise<void> {
     const payment = await findPaymentByJobAndType(reusableJobId, "setup_intent");
 
     assert(result.jobId === reusableJobId, "jobId");
-    assert(job.fields.status === JOB_STATUS.matched_awaiting_response, "matched status");
+    assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "accepted status");
     assert(Boolean(driver.fields.stripe_customer_id), "driver stripe_customer_id");
     assert(payment?.fields.status === "succeeded", "payment succeeded");
   });
@@ -697,25 +713,17 @@ async function main(): Promise<void> {
     assert((await countPaymentsByJobAndType(client, reusableJobId, "setup_intent")) === 1, "still one payment row");
   });
 
-  await trackResult("beginMatching: rejects without setup payment succeeded", async () => {
+  await trackResult("beginMatching: succeeds without setup payment", async () => {
     const driverId = await seedDriver("match-guard");
     const jobId = await seedJob(driverId, {
       status: JOB_STATUS.matched_awaiting_response,
+      match_tier: 1,
+      match_tier_started_at: new Date().toISOString(),
     });
 
     const { beginMatching } = await import("@/lib/matching/start");
-    const { JobNotMatchableError } = await import("@/lib/matching/errors");
-
-    try {
-      await beginMatching(jobId);
-      throw new Error("expected JobNotMatchableError");
-    } catch (error) {
-      assert(error instanceof JobNotMatchableError, "JobNotMatchableError");
-      assert(
-        error.reason === "Payment setup not completed",
-        "payment setup reason",
-      );
-    }
+    const result = await beginMatching(jobId);
+    assert(result.jobId === jobId, "jobId");
   });
 
   await trackResult("webhook: setup_intent.succeeded dispatch", async () => {
@@ -736,7 +744,7 @@ async function main(): Promise<void> {
     } as unknown as Stripe.Event);
 
     const job = await getJobById(jobId);
-    assert(job.fields.status === JOB_STATUS.matched_awaiting_response, "matched via webhook");
+    assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "accepted via webhook");
   });
 
   await trackResult("webhook: setup_intent.setup_failed → failed + action item", async () => {
@@ -875,12 +883,12 @@ async function main(): Promise<void> {
     assert(job.fields.platform_fee === 10, "platform_fee");
   });
 
-  await trackResult("errors: JobNotPayableError after setup completed", async () => {
+  await trackResult("errors: PaymentAlreadyCompletedError after setup completed", async () => {
     try {
       await createSetupIntentForJob(reusableJobId);
-      throw new Error("expected JobNotPayableError");
+      throw new Error("expected PaymentAlreadyCompletedError");
     } catch (error) {
-      assert(error instanceof JobNotPayableError, "JobNotPayableError");
+      assert(error instanceof PaymentAlreadyCompletedError, "PaymentAlreadyCompletedError");
     }
   });
 

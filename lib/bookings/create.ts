@@ -3,6 +3,7 @@ import { verifyDriverOtp } from "@/lib/auth/driver-otp";
 import { buildSignedJobUrl } from "@/lib/auth/signed-url";
 import { upsertDriver } from "@/lib/drivers/upsert";
 import { JOB_STATUS } from "@/lib/jobs/status";
+import { beginMatching } from "@/lib/matching/start";
 import type { BookingRequest, BookingResponse } from "@/types/api/booking";
 import type { DiagnosisFields } from "@/types/airtable/diagnoses";
 import type { JobFields } from "@/types/airtable/jobs";
@@ -60,8 +61,13 @@ export async function createBooking(
   const intakeFields = toJobIntakeFields(intake, resolvedVehicle);
   const rawMeta = parseDiagnosisRaw(diagnosis.fields.ai_response_raw);
 
+  const isImmediate = !intake.scheduledTime;
+  const matchStartedAt = isImmediate ? new Date().toISOString() : undefined;
+
   const jobFields = createJobSchema.parse({
-    status: intake.scheduledTime ? JOB_STATUS.scheduled : JOB_STATUS.draft,
+    status: intake.scheduledTime
+      ? JOB_STATUS.scheduled
+      : JOB_STATUS.matched_awaiting_response,
     driver_id: [driverId],
     diagnosis_id: [intake.diagnosisId],
     zip_code: intake.zip,
@@ -69,6 +75,9 @@ export async function createBooking(
       .ai_response_category as DiagnosisCategory,
     service_type: intake.serviceType,
     safety_flag: rawMeta.safety_flag ?? false,
+    ...(isImmediate
+      ? { match_tier: 1, match_tier_started_at: matchStartedAt }
+      : {}),
     ...intakeFields,
   });
 
@@ -89,6 +98,17 @@ export async function createBooking(
     diagnosisUpdate as Partial<DiagnosisFields>,
     { typecast: true },
   );
+
+  if (isImmediate) {
+    try {
+      await beginMatching(job.id);
+    } catch (error) {
+      console.error(
+        `[bookings/create] beginMatching failed for job ${job.id}:`,
+        error,
+      );
+    }
+  }
 
   return {
     jobId: job.id,

@@ -1,7 +1,6 @@
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
-import { assertJobPaymentSetupComplete } from "@/lib/payments/assert-setup-complete";
 import { scheduleJob } from "@/lib/qstash/schedule";
 import {
   getTierDelaysSeconds,
@@ -55,16 +54,6 @@ export async function beginMatching(jobId: string): Promise<BeginMatchingResult>
       jobId,
       jobStatusOr(job.fields.status),
       "Missing zip_code",
-    );
-  }
-
-  try {
-    await assertJobPaymentSetupComplete(jobId);
-  } catch {
-    throw new JobNotMatchableError(
-      jobId,
-      jobStatusOr(job.fields.status),
-      "Payment setup not completed",
     );
   }
 

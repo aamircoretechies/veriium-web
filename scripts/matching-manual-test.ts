@@ -179,16 +179,6 @@ async function main(): Promise<void> {
     return record.id;
   }
 
-  async function seedSucceededSetupPayment(jobId: string): Promise<void> {
-    await client.createRecord("payments", {
-      type: "setup_intent",
-      amount: 0,
-      status: "succeeded",
-      stripe_setup_intent_id: `test-setup-${jobId}`,
-      job_id: [jobId],
-    });
-  }
-
   async function seedJob(
     driverId: string,
     fields: Record<string, unknown> = {},
@@ -207,7 +197,6 @@ async function main(): Promise<void> {
       ...fields,
     });
     created.jobs.push(record.id);
-    await seedSucceededSetupPayment(record.id);
     return record.id;
   }
 
@@ -332,6 +321,16 @@ async function main(): Promise<void> {
     assert(result.action === "accepted", "action accepted");
     assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "status");
     assert(mechanic.fields.availability_status === "busy", "mechanic busy");
+  });
+
+  await trackResult("Tier 1: ACCEPT without setup payment succeeds", async () => {
+    await prepareMechanics();
+    const jobId = await seedJob(driverId);
+    await beginMatching(jobId);
+    const result = await handleMatchResponse(jobId, tier1MechId, "ACCEPT");
+    const job = await getJobById(jobId);
+    assert(result.action === "accepted", "action accepted without payment row");
+    assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "status");
   });
 
   await trackResult("Tier 1: DECLINE → matched_tier2", async () => {

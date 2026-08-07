@@ -1,5 +1,16 @@
 import { JOB_STATUS, type JobStatus } from "@/lib/jobs/status";
 
+/**
+ * W1-A immediate booking state machine:
+ *   OTP + createBooking → matched_awaiting_response (matching starts)
+ *   mechanic ACCEPT/YES → accepted_by_mechanic
+ *   driver opens payment → matched_awaiting_payment
+ *   SetupIntent succeeded → accepted_by_mechanic
+ *   service begins → en_route → …
+ *
+ * Scheduled bookings stay in Scheduled until a future ticket starts matching.
+ */
+
 /** Phase 5 — payment-phase statuses before matching begins. */
 export const PAYMENT_PHASE_STATUSES = [
   JOB_STATUS.draft,
@@ -13,10 +24,11 @@ export const PAYMENT_TRANSITIONS: Partial<
 > = {
   [JOB_STATUS.draft]: [
     JOB_STATUS.matched_awaiting_payment,
+    JOB_STATUS.matched_awaiting_response,
     JOB_STATUS.cancelled,
   ],
   [JOB_STATUS.matched_awaiting_payment]: [
-    JOB_STATUS.matched_awaiting_response,
+    JOB_STATUS.accepted_by_mechanic,
     JOB_STATUS.cancelled,
   ],
 };
@@ -89,6 +101,7 @@ export const SERVICE_TRANSITIONS: Partial<
   Record<ServicePhaseStatus, readonly JobStatus[]>
 > = {
   [JOB_STATUS.accepted_by_mechanic]: [
+    JOB_STATUS.matched_awaiting_payment,
     JOB_STATUS.en_route,
     JOB_STATUS.vehicle_received,
     JOB_STATUS.cancelled,

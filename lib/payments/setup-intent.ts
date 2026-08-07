@@ -58,7 +58,8 @@ export async function createSetupIntentForJob(
 
   if (
     status !== JOB_STATUS.draft &&
-    status !== JOB_STATUS.matched_awaiting_payment
+    status !== JOB_STATUS.matched_awaiting_payment &&
+    status !== JOB_STATUS.accepted_by_mechanic
   ) {
     throw new JobNotPayableError(jobId, jobStatusOr(status));
   }
@@ -90,6 +91,11 @@ export async function createSetupIntentForJob(
   const now = new Date().toISOString();
 
   if (status === JOB_STATUS.draft) {
+    await updateJobStatus(jobId, {
+      status: JOB_STATUS.matched_awaiting_payment,
+      policy_disclosed_at: now,
+    });
+  } else if (status === JOB_STATUS.accepted_by_mechanic) {
     await updateJobStatus(jobId, {
       status: JOB_STATUS.matched_awaiting_payment,
       policy_disclosed_at: now,

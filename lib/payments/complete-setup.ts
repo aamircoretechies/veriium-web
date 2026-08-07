@@ -5,7 +5,6 @@ import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
 import { JOB_STATUS } from "@/lib/jobs/status";
-import { beginMatching } from "@/lib/matching/start";
 import { getStripe } from "@/lib/stripe/client";
 import type { DriverFields } from "@/types/airtable/drivers";
 import { updateDriverSchema } from "@/types/airtable/schemas";
@@ -86,14 +85,12 @@ export async function completeSetup(
     status: "succeeded",
   });
 
+  // W1-A: matching starts at booking create, not payment. After mechanic accept,
+  // payment saves the card and returns the job to accepted_by_mechanic.
   if (job.fields.status === JOB_STATUS.matched_awaiting_payment) {
-    const now = new Date().toISOString();
     await updateJobStatus(jobId, {
-      status: JOB_STATUS.matched_awaiting_response,
-      match_tier: 1,
-      match_tier_started_at: now,
+      status: JOB_STATUS.accepted_by_mechanic,
     });
-    await beginMatching(jobId);
   }
 
   return {

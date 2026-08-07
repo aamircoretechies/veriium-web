@@ -1,7 +1,6 @@
 import { getEnv } from "@/config/env";
 import { AirtableError } from "@/lib/airtable";
 import { jsonError, jsonOk } from "@/lib/api/response";
-import { ensureDevPaymentSetup } from "@/lib/dev/seed-payment-setup";
 import { isDevBypassMode } from "@/lib/dev/flags";
 import { getJobById } from "@/lib/jobs/lookup";
 import { JOB_STATUS } from "@/lib/jobs/status";
@@ -56,7 +55,6 @@ export async function POST(request: Request, context: RouteContext) {
       status === JOB_STATUS.draft ||
       status === JOB_STATUS.matched_awaiting_payment
     ) {
-      await ensureDevPaymentSetup(jobId);
       const now = new Date().toISOString();
       await updateJobStatus(jobId, {
         status: JOB_STATUS.matched_awaiting_response,
