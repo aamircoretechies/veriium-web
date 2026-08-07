@@ -227,7 +227,7 @@ export default function DiagnosticModal({
       const jobUrl = new URL(data.signedUrl);
       const accessToken = jobUrl.searchParams.get("token");
       if (!accessToken) {
-        setError("Unable to continue to payment. Please try again.");
+        setError("Unable to continue to matching. Please try again.");
         return;
       }
       router.push(

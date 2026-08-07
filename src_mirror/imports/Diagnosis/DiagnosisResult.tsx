@@ -1,21 +1,6 @@
 "use client";
-import { useEffect } from "react";
 
-interface DiagnosisResultProps {
-  onMatchFound: () => void;
-}
-
-export default function DiagnosisResult({
-  onMatchFound,
-}: DiagnosisResultProps) {
-  // Auto-transition to match found after 5 seconds
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      onMatchFound();
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [onMatchFound]);
-
+export default function DiagnosisResult() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       {/* Top Nav */}
@@ -84,22 +69,6 @@ export default function DiagnosisResult({
           </p>
           <p className="text-[12px] text-[#aaa] font-['Albert_Sans:Regular',sans-serif] mt-1">
             Final cost confirmed by verified mechanic.
-          </p>
-        </div>
-
-        {/* Action section */}
-        <div className="flex flex-col items-center py-8">
-          {/* Spinner */}
-          <div className="w-16 h-16 rounded-full border-[2px] border-[#ffa270] border-t-transparent animate-spin mb-6" />
-
-          <p className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black mb-3">
-            Finding available mechanics near 30304...
-          </p>
-
-          <p className="font-['Albert_Sans:Regular',sans-serif] text-[15px] text-[#444] text-center max-w-[560px] leading-[1.7]">
-            <strong className="font-bold text-black">We're contacting nearby verified mechanics.</strong> Please stay on this page or you will
-            <br />
-            be notified via text message when you are matched with a mechanic.
           </p>
         </div>
       </div>
