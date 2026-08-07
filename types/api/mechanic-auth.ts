@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isValidUsPhone } from "@/lib/phone";
 import { MECHANIC_STATUSES } from "@/types/airtable/enums";
+import { availabilityStatusSchema } from "@/types/airtable/schemas";
 
 const usPhoneSchema = z
   .string()
@@ -42,3 +43,14 @@ export const mechanicMeResponseSchema = z.object({
 
 export type MechanicAuthSummaryResponse = z.infer<typeof mechanicAuthSummarySchema>;
 export type MechanicMeResponse = z.infer<typeof mechanicMeResponseSchema>;
+
+export const setMechanicAvailabilityResponseSchema = z.object({
+  mechanicId: z.string(),
+  availabilityOn: z.boolean(),
+  availabilityStatus: availabilityStatusSchema,
+  availabilityUpdatedAt: z.string().optional(),
+});
+
+export type SetMechanicAvailabilityResponse = z.infer<
+  typeof setMechanicAvailabilityResponseSchema
+>;

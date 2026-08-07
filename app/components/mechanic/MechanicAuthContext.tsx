@@ -8,7 +8,10 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import type { MechanicMeResponse } from "@/types/api/mechanic-auth";
+import type {
+  MechanicMeResponse,
+  SetMechanicAvailabilityResponse,
+} from "@/types/api/mechanic-auth";
 
 export type MechanicAccountState =
   | "application_submitted"
@@ -28,12 +31,16 @@ export interface MechanicUser {
   availabilityOn: boolean;
 }
 
+export type SetAvailabilityResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
 interface MechanicAuthContextType {
   mechanic: MechanicUser | null;
   hydrated: boolean;
   signIn: (user: MechanicUser, token?: string) => void;
   signOut: () => void;
-  setAvailability: (on: boolean) => void;
+  setAvailability: (on: boolean) => Promise<SetAvailabilityResult>;
   refreshMechanic: () => Promise<void>;
 }
 
@@ -118,6 +125,15 @@ function readCachedUser(): MechanicUser | null {
     return JSON.parse(userJson) as MechanicUser;
   } catch {
     return null;
+  }
+}
+
+async function parseApiError(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    return data?.error?.message ?? "Something went wrong. Please try again.";
+  } catch {
+    return "Something went wrong. Please try again.";
   }
 }
 
@@ -216,14 +232,58 @@ export function MechanicAuthProvider({ children }: { children: ReactNode }) {
     };
   }, [signIn]);
 
-  const setAvailability = useCallback((on: boolean) => {
-    setMechanic((prev) => {
-      if (!prev) return prev;
-      const updated = { ...prev, availabilityOn: on };
-      persistSession(updated);
-      return updated;
-    });
-  }, []);
+  const setAvailability = useCallback(
+    async (on: boolean): Promise<SetAvailabilityResult> => {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token || !mechanic) {
+        return { ok: false, message: "You are not signed in." };
+      }
+
+      if (mechanic.availabilityOn === on) {
+        return { ok: true };
+      }
+
+      const previousOn = mechanic.availabilityOn;
+      signIn({ ...mechanic, availabilityOn: on }, token);
+
+      try {
+        const res = await fetch("/api/mechanics/availability", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ available: on }),
+        });
+
+        if (res.status === 401 || res.status === 403) {
+          signIn({ ...mechanic, availabilityOn: previousOn }, token);
+          signOut();
+          return {
+            ok: false,
+            message: "Your session has expired. Please sign in again.",
+          };
+        }
+
+        if (!res.ok) {
+          signIn({ ...mechanic, availabilityOn: previousOn }, token);
+          return { ok: false, message: await parseApiError(res) };
+        }
+
+        const data = (await res.json()) as SetMechanicAvailabilityResponse;
+        signIn({ ...mechanic, availabilityOn: data.availabilityOn }, token);
+        await refreshMechanic();
+        return { ok: true };
+      } catch {
+        signIn({ ...mechanic, availabilityOn: previousOn }, token);
+        return {
+          ok: false,
+          message: "Network error. Please check your connection and try again.",
+        };
+      }
+    },
+    [mechanic, signIn, signOut, refreshMechanic],
+  );
 
   return (
     <MechanicAuthContext.Provider

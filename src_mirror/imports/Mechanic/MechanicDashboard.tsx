@@ -1,8 +1,6 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Bell } from "lucide-react";
-import imgProfileAvatar from "./profile-avatar.png";
 import imgCarRepair from "../LandingDesktopV2/4943cb7fc6a48d7dc22bbbde539341ff388b0172.webp";
 import Footer from "../../../app/components/Footer";
 import MechanicTopNav from "./MechanicTopNav";
@@ -142,62 +140,6 @@ function RepairSection({ title, count, repairs }: { title: string; count: number
       {repairs.map((r) => (
         <RepairCard key={r.id} repair={r} />
       ))}
-    </div>
-  );
-}
-
-function ProfileAvatar() {
-  const [isOpen, setIsOpen] = useState(false);
-  const router = useRouter();
-
-  return (
-    <div className="relative shrink-0">
-      <div className="flex items-center gap-[8px] cursor-pointer transition-opacity duration-200 hover:opacity-80" onClick={() => setIsOpen(!isOpen)}>
-        <img src={imgProfileAvatar.src} alt="Profile" className="w-[40px] h-[40px] rounded-full object-cover border-2 border-gray-200" />
-        <ChevronDown className="w-[16px] h-[16px] text-black" strokeWidth={2} />
-      </div>
-
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 top-[56px] z-50 w-[280px] bg-white rounded-[12px] shadow-[0_4px_24px_rgba(0,0,0,0.08)] border border-[#D2D2D2] p-6 flex flex-col gap-5 font-['Albert_Sans:Regular',sans-serif]">
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-black leading-tight">Daniel M.</span>
-                <span className="text-[13px] text-gray-500 mt-1">+1 (555) 123-4567</span>
-              </div>
-              <img src={imgProfileAvatar.src} alt="Profile" className="w-[44px] h-[44px] rounded-full object-cover" />
-            </div>
-            <div className="flex flex-col gap-4 border-t border-[#D2D2D2] pt-4">
-              <button className="text-[15px] text-black hover:text-[#ffa270] transition-colors bg-transparent border-none cursor-pointer text-left p-0">Account</button>
-              <button className="text-[15px] text-black hover:text-[#ffa270] transition-colors bg-transparent border-none cursor-pointer text-left p-0">Settings</button>
-              <button onClick={() => { setIsOpen(false); router.push('/public'); }} className="text-[15px] text-[#e11d48] hover:text-[#be123c] transition-colors bg-transparent border-none cursor-pointer text-left p-0 font-['Albert_Sans:Bold',sans-serif] font-bold">Log Out</button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function TopNav({ activeTab }: { activeTab: "dashboard" | "my-repairs" }) {
-  const router = useRouter();
-  return (
-    <div className="flex items-center justify-between w-full py-[16px]" data-name="Mechanic Top Nav">
-      <div onClick={() => router.push('/mechanic')} className="[word-break:break-word] flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative shrink-0 text-[28px] text-black tracking-[0.1px] whitespace-nowrap cursor-pointer select-none transition-opacity duration-200 hover:opacity-80">
-        <p className="leading-[20px]">VERIIUM</p>
-      </div>
-
-      <div className="flex items-center gap-[8px]">
-        {(["dashboard", "my-repairs"] as const).map((tab) => (
-          <button key={tab} className={`px-[20px] py-[10px] rounded-[20px] font-['Albert_Sans:Medium',sans-serif] font-medium text-[16px] cursor-pointer select-none transition-all duration-200 border-none outline-none ${activeTab === tab ? "bg-[#ffa270] text-black" : "bg-transparent text-black hover:bg-gray-100"}`}>{tab === "dashboard" ? "Dashboard" : "My Repairs"}</button>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-[16px]">
-        <button className="bg-transparent border-none cursor-pointer p-0 text-black hover:text-[#ffa270] transition-colors"><Bell className="w-[22px] h-[22px]" strokeWidth={2} /></button>
-        <ProfileAvatar />
-      </div>
     </div>
   );
 }

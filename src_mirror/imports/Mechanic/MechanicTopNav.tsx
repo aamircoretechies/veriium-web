@@ -1,5 +1,4 @@
 "use client";
-"use client";
 import { useState } from "react";
 import { CircleUser, FileText, Settings, LogOut, Bell, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -50,24 +49,53 @@ export function NavPill({
 export function AvailabilityToggle() {
   const { mechanic, setAvailability } = useMechanicAuth();
   const isOn = mechanic?.availabilityOn ?? false;
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleToggle = async () => {
+    if (pending) return;
+
+    setPending(true);
+    setError(null);
+
+    const result = await setAvailability(!isOn);
+    if (result.ok === false) {
+      setError(result.message);
+    }
+
+    setPending(false);
+  };
 
   return (
-    <button
-      onClick={() => setAvailability(!isOn)}
-      className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 transition-all duration-200 cursor-pointer select-none font-['Albert_Sans:Bold',sans-serif] font-bold text-[13px] ${
-        isOn
-          ? "bg-green-50 border-green-400 text-green-700 hover:bg-green-100"
-          : "bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100"
-      }`}
-      title={isOn ? "You are accepting jobs. Click to go offline." : "You are offline. Click to accept jobs."}
-    >
-      <span
-        className={`w-[8px] h-[8px] rounded-full transition-colors duration-200 shrink-0 ${
-          isOn ? "bg-green-500" : "bg-gray-400"
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={() => void handleToggle()}
+        disabled={pending}
+        className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 transition-all duration-200 cursor-pointer select-none font-['Albert_Sans:Bold',sans-serif] font-bold text-[13px] disabled:opacity-60 disabled:cursor-not-allowed ${
+          isOn
+            ? "bg-green-50 border-green-400 text-green-700 hover:bg-green-100"
+            : "bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100"
         }`}
-      />
-      {isOn ? "Online" : "Offline"}
-    </button>
+        title={
+          error ??
+          (isOn
+            ? "You are accepting jobs. Click to go offline."
+            : "You are offline. Click to accept jobs.")
+        }
+      >
+        <span
+          className={`w-[8px] h-[8px] rounded-full transition-colors duration-200 shrink-0 ${
+            isOn ? "bg-green-500" : "bg-gray-400"
+          }`}
+        />
+        {isOn ? "Online" : "Offline"}
+      </button>
+      {error && (
+        <span className="text-[11px] text-red-600 max-w-[200px] text-right leading-tight">
+          {error}
+        </span>
+      )}
+    </div>
   );
 }
 
