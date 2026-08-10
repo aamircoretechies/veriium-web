@@ -3,15 +3,47 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ReceiptUploadPanel from "@/app/components/mechanic/ReceiptUploadPanel";
+import type { MechanicJobView } from "@/types/api/mechanic-job-view";
 
-type JobReceiptView = {
-  jobId: string;
-  status: string;
-  partsCost: number | null;
-  receiptStatus: string | null;
-  partsReimbursementForfeited: boolean;
-  vehicle: { year: number | null; make: string | null; model: string | null };
-};
+function StatusBadge({ label }: { label: string }) {
+  return (
+    <span className="rounded-full bg-[#ffa270]/20 px-2.5 py-1 text-xs font-bold font-['Albert_Sans:Bold',sans-serif] text-[#e8854a]">
+      {label}
+    </span>
+  );
+}
+
+function InfoCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3 rounded-[14px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
+      <h2 className="font-['Albert_Sans:Bold',sans-serif] text-[15px] font-bold text-black">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value?: string | null }) {
+  if (!value) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[12px] font-medium uppercase tracking-wide text-[#888]">
+        {label}
+      </span>
+      <span className="text-[15px] text-[#333]">{value}</span>
+    </div>
+  );
+}
 
 export default function MechanicJobReceiptPage({
   jobId,
@@ -20,7 +52,7 @@ export default function MechanicJobReceiptPage({
 }) {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const [job, setJob] = useState<JobReceiptView | null>(null);
+  const [job, setJob] = useState<MechanicJobView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -29,7 +61,10 @@ export default function MechanicJobReceiptPage({
     setError(null);
 
     try {
-      const url = new URL(`/api/jobs/${jobId}/receipt`, window.location.origin);
+      const url = new URL(
+        `/api/jobs/${jobId}/mechanic-view`,
+        window.location.origin,
+      );
       if (token) {
         url.searchParams.set("token", token);
       }
@@ -41,7 +76,7 @@ export default function MechanicJobReceiptPage({
       }
 
       const res = await fetch(url.toString(), { headers });
-      const data = (await res.json()) as JobReceiptView & {
+      const data = (await res.json()) as MechanicJobView & {
         error?: { message?: string };
       };
 
@@ -77,19 +112,73 @@ export default function MechanicJobReceiptPage({
     );
   }
 
-  const vehicleLabel = [job.vehicle.year, job.vehicle.make, job.vehicle.model]
+  const vehicleLabel = [
+    job.vehicle.year,
+    job.vehicle.make,
+    job.vehicle.model,
+  ]
     .filter(Boolean)
     .join(" ");
 
+  const summaryText = job.diagnosisSummary ?? job.issueText;
+
   return (
     <main className="mx-auto min-h-screen max-w-lg p-6 font-['Albert_Sans:Regular',sans-serif]">
-      <div className="mb-6 flex flex-col gap-2">
-        <h1 className="font-['Albert_Sans:Bold',sans-serif] text-2xl font-bold">
-          Upload Parts Receipt
-        </h1>
+      <div className="mb-6 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-['Albert_Sans:Bold',sans-serif] text-2xl font-bold">
+            Active Job
+          </h1>
+          <StatusBadge label={job.statusLabel} />
+        </div>
         {vehicleLabel && (
           <p className="text-[15px] text-gray-600">{vehicleLabel}</p>
         )}
+      </div>
+
+      <div className="mb-6 flex flex-col gap-4">
+        <InfoCard title="Job details">
+          <DetailRow label="Service type" value={job.serviceTypeLabel} />
+          <DetailRow label="ZIP" value={job.zipCode} />
+          <DetailRow
+            label="Scheduled"
+            value={job.scheduledTimeLabel ?? "As soon as possible"}
+          />
+          {summaryText && (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[12px] font-medium uppercase tracking-wide text-[#888]">
+                Issue
+              </span>
+              <p className="text-[15px] leading-[1.6] text-[#333]">
+                {summaryText}
+              </p>
+            </div>
+          )}
+        </InfoCard>
+
+        <InfoCard title="Driver contact">
+          <DetailRow label="Name" value={job.driver.name} />
+          {job.driver.phone ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[12px] font-medium uppercase tracking-wide text-[#888]">
+                Phone
+              </span>
+              <a
+                href={`tel:${job.driver.phone}`}
+                className="text-[15px] font-medium text-[#e8854a] underline"
+              >
+                {job.driver.phone}
+              </a>
+            </div>
+          ) : null}
+          <DetailRow label="ZIP" value={job.driver.zip} />
+        </InfoCard>
+      </div>
+
+      <div className="mb-4 flex flex-col gap-2">
+        <h2 className="font-['Albert_Sans:Bold',sans-serif] text-lg font-bold">
+          Parts receipt
+        </h2>
         {job.partsCost != null && job.partsCost > 0 && (
           <p className="text-[14px] text-gray-500">
             Quoted parts: ${job.partsCost.toFixed(2)}

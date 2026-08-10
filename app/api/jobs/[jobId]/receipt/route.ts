@@ -2,14 +2,9 @@ import { z } from "zod";
 
 import { AirtableError } from "@/lib/airtable";
 import { jsonError, jsonOk } from "@/lib/api/response";
-import {
-  InvalidJobAccessTokenError,
-  verifyJobAccessToken,
-} from "@/lib/auth/signed-url";
-import {
-  InvalidMechanicSessionError,
-  requireMechanicSession,
-} from "@/lib/auth/mechanic-session";
+import { resolveMechanicId } from "@/lib/auth/mechanic-job-access";
+import { InvalidJobAccessTokenError } from "@/lib/auth/signed-url";
+import { InvalidMechanicSessionError } from "@/lib/auth/mechanic-session";
 import { parseQuoteDetails } from "@/lib/jobs/quote-details";
 import { getJobById } from "@/lib/jobs/lookup";
 import { MechanicNotAssignedError } from "@/lib/matching/errors";
@@ -25,37 +20,6 @@ const submitReceiptBodySchema = z.object({
 });
 
 type RouteContext = { params: Promise<{ jobId: string }> };
-
-async function resolveMechanicId(
-  request: Request,
-  jobId: string,
-): Promise<string> {
-  const url = new URL(request.url);
-  const token = url.searchParams.get("token");
-
-  if (token) {
-    try {
-      await verifyJobAccessToken(jobId, token);
-    } catch (error) {
-      if (error instanceof InvalidJobAccessTokenError) {
-        throw error;
-      }
-      throw new InvalidJobAccessTokenError();
-    }
-
-    const job = await getJobById(jobId);
-    const mechanicId = job.fields.mechanic_id?.[0];
-    if (!mechanicId) {
-      throw new MechanicNotAssignedError(jobId, "signed-url");
-    }
-    return mechanicId;
-  }
-
-  const session = await requireMechanicSession(request);
-  const job = await getJobById(jobId);
-  assertMechanicAssigned(job, session.mechanicId);
-  return session.mechanicId;
-}
 
 export async function GET(request: Request, context: RouteContext) {
   const { jobId } = await context.params;

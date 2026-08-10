@@ -1,0 +1,37 @@
+import { z } from "zod";
+
+import { jobStatusSchema, serviceTypeSchema } from "@/types/airtable/schemas";
+
+export const mechanicJobViewDriverSchema = z.object({
+  name: z.string().optional(),
+  phone: z.string().optional(),
+  zip: z.string().optional(),
+});
+
+export const mechanicJobViewVehicleSchema = z.object({
+  year: z.number().int().positive().nullable(),
+  make: z.string().nullable(),
+  model: z.string().nullable(),
+});
+
+export const mechanicJobViewSchema = z.object({
+  jobId: z.string().min(1),
+  status: jobStatusSchema,
+  statusLabel: z.string(),
+  vehicle: mechanicJobViewVehicleSchema,
+  zipCode: z.string().nullable(),
+  serviceType: serviceTypeSchema.optional(),
+  serviceTypeLabel: z.string().optional(),
+  scheduledTime: z.string().datetime().optional(),
+  scheduledTimeLabel: z.string().optional(),
+  issueText: z.string().optional(),
+  diagnosisSummary: z.string().optional(),
+  driver: mechanicJobViewDriverSchema,
+  partsCost: z.number().nullable(),
+  onHand: z.boolean(),
+  receiptUrl: z.string().url().nullable(),
+  receiptStatus: z.string().nullable(),
+  partsReimbursementForfeited: z.boolean(),
+});
+
+export type MechanicJobView = z.infer<typeof mechanicJobViewSchema>;
