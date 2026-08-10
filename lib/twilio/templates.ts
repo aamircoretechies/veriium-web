@@ -87,8 +87,8 @@ export function tier4AdminAlert(jobId: string, details: MatchJobDetails): string
 }
 
 /** §6.1 — Notify driver when a mechanic accepts. */
-export function matchAcceptedDriver(): string {
-  return "Veriium: Great news — a mechanic accepted your job! They'll be in touch shortly with next steps.";
+export function matchAcceptedDriver(jobUrl: string): string {
+  return `Veriium: Great news — a mechanic accepted your job! They'll be in touch shortly with next steps. View your job: ${jobUrl}`;
 }
 
 type MatchAcceptedMechanicDetails = {
@@ -285,6 +285,6 @@ export function noShowEligibleMechanic(): string {
 }
 
 /** §9.3 — Driver reminder to confirm or dispute after DONE. */
-export function disputeReminderDriver(hours: 24 | 48 | 72): string {
-  return `Veriium: Reminder — your repair is awaiting confirmation (${hours}h). Reply 2 to confirm and complete payment, or 1 to dispute.`;
+export function disputeReminderDriver(hours: 24 | 48 | 72, jobUrl: string): string {
+  return `Veriium: Reminder — your repair is awaiting confirmation (${hours}h). Reply 2 to confirm and complete payment, or 1 to dispute. View job: ${jobUrl}`;
 }

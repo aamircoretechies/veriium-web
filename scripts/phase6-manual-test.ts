@@ -35,6 +35,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type Stripe from "stripe";
 
+import type { SendSmsResult } from "@/lib/twilio/sms";
 import type { MechanicFields } from "@/types/airtable/mechanics";
 import {
   ACTION_ITEM_TYPE,
@@ -139,6 +140,36 @@ function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function clearSmsLog(): void {
+  (globalThis as { __manualTestSmsLog?: SendSmsResult[] }).__manualTestSmsLog =
+    [];
+}
+
+function getSmsLog(): SendSmsResult[] {
+  return (
+    (globalThis as { __manualTestSmsLog?: SendSmsResult[] }).__manualTestSmsLog ??
+    []
+  );
+}
+
+function assertDisputeReminderDriverSms(
+  driverPhone: string,
+  jobId: string,
+  hours: 24 | 48 | 72,
+): void {
+  const smsLog = getSmsLog();
+  assert(
+    smsLog.some(
+      (row) =>
+        row.to === driverPhone &&
+        row.body.includes(`(${hours}h)`) &&
+        row.body.includes(`/j/${jobId}`) &&
+        row.body.includes("token="),
+    ),
+    `dispute reminder ${hours}h SMS with signed job URL`,
+  );
 }
 
 function hoursFromNow(hours: number): string {
@@ -1018,11 +1049,19 @@ async function main(): Promise<void> {
         parseSmsCommand("DONE $200 PARTS $40"),
       );
 
+      const driver = await getDriverById(driverId);
+      clearSmsLog();
+
       for (const reminder of [24, 48, 72] as const) {
         const result = await runDisputeRemind(jobId, reminder);
         assert(
           result.action === "dispute_reminder_sent",
           `reminder ${reminder}h sent`,
+        );
+        assertDisputeReminderDriverSms(
+          driver.fields.phone_number!,
+          jobId,
+          reminder,
         );
       }
 

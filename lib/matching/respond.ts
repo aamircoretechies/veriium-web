@@ -1,4 +1,4 @@
-import { buildSignedMechanicJobUrl } from "@/lib/auth/signed-url";
+import { buildSignedJobUrl, buildSignedMechanicJobUrl } from "@/lib/auth/signed-url";
 import { getDriverById } from "@/lib/drivers/lookup";
 import { findCommittedJobForMechanic } from "@/lib/jobs/lookup";
 import { InvalidJobTransitionError } from "@/lib/jobs/transitions";
@@ -85,7 +85,8 @@ async function notifyDriverAccepted(
   try {
     const driver = await getDriverById(driverId);
     if (driver.fields.phone_number) {
-      await sendSms(driver.fields.phone_number, matchAcceptedDriver());
+      const jobUrl = await buildSignedJobUrl(job.id);
+      await sendSms(driver.fields.phone_number, matchAcceptedDriver(jobUrl));
     }
   } catch (error) {
     console.error(

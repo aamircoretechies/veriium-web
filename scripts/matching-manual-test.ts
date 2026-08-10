@@ -120,6 +120,20 @@ function assertMatchAcceptedMechanicSms(
   );
 }
 
+function assertMatchAcceptedDriverSms(driverPhone: string, jobId: string): void {
+  const smsLog = getSmsLog();
+  assert(
+    smsLog.some(
+      (row) =>
+        row.to === driverPhone &&
+        row.body.includes("Great news") &&
+        row.body.includes(`/j/${jobId}`) &&
+        row.body.includes("token="),
+    ),
+    "driver post-accept SMS with signed job URL",
+  );
+}
+
 async function probeAirtable(): Promise<boolean> {
   const baseId = process.env.AIRTABLE_BASE_ID;
   const tableId = process.env.AIRTABLE_TABLE_DRIVERS;
@@ -426,6 +440,7 @@ async function main(): Promise<void> {
       driver.fields.phone_number!,
       jobId,
     );
+    assertMatchAcceptedDriverSms(driver.fields.phone_number!, jobId);
   });
 
   await trackResult("Tier 1: ACCEPT without setup payment succeeds", async () => {
@@ -471,6 +486,7 @@ async function main(): Promise<void> {
       driver.fields.phone_number!,
       jobId,
     );
+    assertMatchAcceptedDriverSms(driver.fields.phone_number!, jobId);
   });
 
   await trackResult("Tier 2: second YES → already_assigned", async () => {

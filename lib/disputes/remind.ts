@@ -1,4 +1,5 @@
 import { getAirtableClient } from "@/lib/airtable";
+import { buildSignedJobUrl } from "@/lib/auth/signed-url";
 import { getDriverById } from "@/lib/drivers/lookup";
 import type { DisputeReminderHours } from "@/lib/edge/constants";
 import { JOB_STATUS } from "@/lib/jobs/status";
@@ -43,7 +44,11 @@ export async function runDisputeRemind(
     try {
       const driver = await getDriverById(driverId);
       if (driver.fields.phone_number) {
-        await sendSms(driver.fields.phone_number, disputeReminderDriver(reminder));
+        const jobUrl = await buildSignedJobUrl(jobId);
+        await sendSms(
+          driver.fields.phone_number,
+          disputeReminderDriver(reminder, jobUrl),
+        );
       }
     } catch (error) {
       console.error(
