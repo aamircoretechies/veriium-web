@@ -1,8 +1,8 @@
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
-import { JOB_STATUS, getMatchTier } from "@/lib/jobs/status";
 import { sendSms } from "@/lib/twilio/sms";
 import { tier1Assignment } from "@/lib/twilio/templates";
+import { refetchMechanicIfEligible } from "./assert-eligible";
 import { buildJobSmsContext } from "./job-context";
 import { markMechanicAssigned } from "./mechanic-update";
 import { listTier1Mechanics, poolQueryFromJob } from "./query";
@@ -21,33 +21,45 @@ export async function runTier1(jobId: string): Promise<Tier1Result | null> {
   }
 
   const candidates = await listTier1Mechanics(poolQuery);
-  const mechanic = candidates[0];
-  if (!mechanic?.fields.phone_number) {
-    return null;
-  }
-
-  await updateJobStatus(jobId, {
-    mechanic_id: [mechanic.id],
-  });
-  await markMechanicAssigned(mechanic.id);
-
   const smsContext = buildJobSmsContext(job);
-  try {
-    await sendSms(
-      mechanic.fields.phone_number,
-      tier1Assignment({
-        zipCode: smsContext.zipCode,
-        categoryLabel: smsContext.categoryLabel,
-        vehicleLabel: smsContext.vehicleLabel,
-        serviceTypeLabel: smsContext.serviceTypeLabel,
-      }),
-    );
-  } catch (error) {
-    console.error(`[matching/tier1] Failed to send assignment SMS for ${jobId}:`, error);
+
+  for (const candidate of candidates) {
+    const mechanic = await refetchMechanicIfEligible(candidate.id, 1);
+    if (!mechanic) {
+      console.warn(
+        `[matching/tier1] Skipping mechanic ${candidate.id} for ${jobId}: no longer eligible at send time`,
+      );
+      continue;
+    }
+
+    if (!mechanic.fields.phone_number) {
+      continue;
+    }
+
+    await updateJobStatus(jobId, {
+      mechanic_id: [mechanic.id],
+    });
+    await markMechanicAssigned(mechanic.id);
+
+    try {
+      await sendSms(
+        mechanic.fields.phone_number,
+        tier1Assignment({
+          zipCode: smsContext.zipCode,
+          categoryLabel: smsContext.categoryLabel,
+          vehicleLabel: smsContext.vehicleLabel,
+          serviceTypeLabel: smsContext.serviceTypeLabel,
+        }),
+      );
+    } catch (error) {
+      console.error(`[matching/tier1] Failed to send assignment SMS for ${jobId}:`, error);
+    }
+
+    return {
+      mechanicId: mechanic.id,
+      mechanicPhone: mechanic.fields.phone_number,
+    };
   }
 
-  return {
-    mechanicId: mechanic.id,
-    mechanicPhone: mechanic.fields.phone_number,
-  };
+  return null;
 }

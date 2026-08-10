@@ -5,6 +5,7 @@ import { sendSms } from "@/lib/twilio/sms";
 import { tier3Broadcast } from "@/lib/twilio/templates";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { MechanicFields } from "@/types/airtable/mechanics";
+import { refetchMechanicIfEligible } from "./assert-eligible";
 import { buildJobSmsContext } from "./job-context";
 import { listTier3Mechanics, poolQueryFromJob } from "./query";
 import { runTier4 } from "./tier4";
@@ -23,18 +24,29 @@ async function broadcastTier3Sms(
   });
 
   await Promise.all(
-    mechanics
-      .filter((mechanic) => mechanic.fields.phone_number)
-      .map(async (mechanic) => {
-        try {
-          await sendSms(mechanic.fields.phone_number!, body);
-        } catch (error) {
-          console.error(
-            `[matching/tier3] Failed to broadcast to ${mechanic.id} for ${jobId}:`,
-            error,
+    mechanics.map(async (mechanic) => {
+      try {
+        const refreshed = await refetchMechanicIfEligible(mechanic.id, 3);
+        if (!refreshed) {
+          console.warn(
+            `[matching/tier3] Skipping mechanic ${mechanic.id} for ${jobId}: no longer eligible at send time`,
           );
+          return;
         }
-      }),
+
+        const phone = refreshed.fields.phone_number;
+        if (!phone) {
+          return;
+        }
+
+        await sendSms(phone, body);
+      } catch (error) {
+        console.error(
+          `[matching/tier3] Failed to broadcast to ${mechanic.id} for ${jobId}:`,
+          error,
+        );
+      }
+    }),
   );
 }
 

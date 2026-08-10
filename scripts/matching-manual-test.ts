@@ -9,6 +9,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import type { SendSmsResult } from "@/lib/twilio/sms";
+
 import {
   actionItemJobFormula,
   actionItemLinkedToJob,
@@ -86,6 +88,18 @@ function assert(condition: boolean, message: string): void {
   }
 }
 
+function clearSmsLog(): void {
+  (globalThis as { __manualTestSmsLog?: SendSmsResult[] }).__manualTestSmsLog =
+    [];
+}
+
+function getSmsLog(): SendSmsResult[] {
+  return (
+    (globalThis as { __manualTestSmsLog?: SendSmsResult[] }).__manualTestSmsLog ??
+    []
+  );
+}
+
 async function probeAirtable(): Promise<boolean> {
   const baseId = process.env.AIRTABLE_BASE_ID;
   const tableId = process.env.AIRTABLE_TABLE_DRIVERS;
@@ -108,6 +122,7 @@ async function probeAirtable(): Promise<boolean> {
 async function main(): Promise<void> {
   loadEnvFile();
   process.env.MATCHING_MANUAL_TEST = "1";
+  clearSmsLog();
 
   const useMock = process.env.MATCHING_MANUAL_TEST_MOCK === "1" || !(await probeAirtable());
   if (useMock) {
@@ -125,6 +140,7 @@ async function main(): Promise<void> {
   }
   const { beginMatching } = await import("@/lib/matching/start");
   const { escalateToTier } = await import("@/lib/matching/escalate");
+  const { runTier1 } = await import("@/lib/matching/tier1");
   const { handleMatchResponse } = await import("@/lib/matching/respond");
   const { getJobById } = await import("@/lib/jobs/lookup");
   const { getMechanicById } = await import("@/lib/mechanics/lookup");
@@ -491,6 +507,111 @@ async function main(): Promise<void> {
     await escalateToTier(jobId, 4);
     const job = await getJobById(jobId);
     assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "unchanged");
+  });
+
+  console.log("\nW2-E send-time availability re-check:");
+
+  await trackResult("W2-E: refetch skips offline mechanic", async () => {
+    const offlineMechId = await seedMechanic("w2e-off", {});
+    await client.updateRecord("mechanics", offlineMechId, {
+      availability_status: "offline",
+    });
+    const { refetchMechanicIfEligible } = await import(
+      "@/lib/matching/assert-eligible"
+    );
+    const result = await refetchMechanicIfEligible(offlineMechId, 1);
+    assert(result === null, "offline mechanic not eligible");
+  });
+
+  await trackResult("W2-E: Tier 1 assigns fallback when top pick offline", async () => {
+    const isolatedDriver = await seedDriver("w2e-fb");
+    const topPickId = await seedMechanic("w2e-top", {
+      last_assigned_at: null,
+      service_zip_codes: ISOLATED_ZIP,
+    });
+    const fallbackId = await seedMechanic("w2e-fallback", {
+      last_assigned_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+      service_zip_codes: ISOLATED_ZIP,
+    });
+    await client.updateRecord("mechanics", topPickId, {
+      availability_status: "offline",
+    });
+    const jobId = await seedJob(isolatedDriver, { zip_code: ISOLATED_ZIP });
+    const result = await runTier1(jobId);
+    const job = await getJobById(jobId);
+    assert(result !== null, "tier1 result");
+    assert(result!.mechanicId === fallbackId, "fallback mechanic assigned");
+    assert(job.fields.mechanic_id?.[0] === fallbackId, "job mechanic linked");
+    assert(result!.mechanicId !== topPickId, "offline top pick skipped");
+  });
+
+  await trackResult("W2-E: Tier 1 no match when sole mechanic offline", async () => {
+    const isolatedDriver = await seedDriver("w2e-iso");
+    const soleMechId = await seedMechanic("w2e-sole", {
+      service_zip_codes: ISOLATED_ZIP,
+      last_assigned_at: null,
+    });
+    await client.updateRecord("mechanics", soleMechId, {
+      availability_status: "offline",
+    });
+    const jobId = await seedJob(isolatedDriver, { zip_code: ISOLATED_ZIP });
+    const result = await runTier1(jobId);
+    const job = await getJobById(jobId);
+    assert(result === null, "no tier1 match");
+    assert(!job.fields.mechanic_id?.length, "no mechanic linked");
+  });
+
+  await trackResult("W2-E: Tier 2 send-time re-check skips offline mechanic", async () => {
+    await prepareMechanics();
+    const { listTier2Mechanics } = await import("@/lib/matching/query");
+    const { refetchMechanicIfEligible } = await import(
+      "@/lib/matching/assert-eligible"
+    );
+    const poolQuery = {
+      zipCode: TEST_ZIP,
+      category: TEST_CATEGORY,
+      serviceType: "mobile_repair" as const,
+    };
+    const mechanics = await listTier2Mechanics(poolQuery);
+    assert(
+      mechanics.some((row) => row.id === tier2MechA),
+      "tier2MechA in pool",
+    );
+    await client.updateRecord("mechanics", tier2MechA, {
+      availability_status: "offline",
+    });
+    assert(
+      (await refetchMechanicIfEligible(tier2MechA, 2)) === null,
+      "offline skipped at send",
+    );
+    assert(
+      (await refetchMechanicIfEligible(tier2MechB, 2)) !== null,
+      "available mechanic still eligible",
+    );
+  });
+
+  await trackResult("W2-E: Tier 2 broadcast SMS skips offline mechanic", async () => {
+    clearSmsLog();
+    await prepareMechanics();
+    await client.updateRecord("mechanics", tier2MechA, {
+      availability_status: "offline",
+    });
+    const tier2MechBRecord = await getMechanicById(tier2MechB);
+    const jobId = await seedJob(driverId);
+    await beginMatching(jobId);
+    await handleMatchResponse(jobId, tier1MechId, "DECLINE");
+    await escalateToTier(jobId, 2);
+    const smsLog = getSmsLog();
+    const tier2MechAPhone = (await getMechanicById(tier2MechA)).fields
+      .phone_number;
+    assert(
+      !smsLog.some((row) => row.to === tier2MechAPhone),
+      "no SMS to offline tier2MechA",
+    );
+    assert(
+      smsLog.some((row) => row.to === tier2MechBRecord.fields.phone_number),
+      "SMS sent to eligible tier2MechB",
+    );
   });
 
   const passed = results.filter((r) => r.passed).length;
