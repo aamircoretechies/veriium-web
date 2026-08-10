@@ -1,6 +1,6 @@
-import JobStatus from "../../../src_mirror/imports/JobStatus/JobStatus";
+import { redirect } from "next/navigation";
 
+/** Legacy route without signed URL — redirect to public entry. */
 export default function JobPage() {
-  return <JobStatus />;
+  redirect("/public?error=invalid_link");
 }
-

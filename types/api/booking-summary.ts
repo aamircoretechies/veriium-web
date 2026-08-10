@@ -41,6 +41,8 @@ export const bookingSummarySchema = z.object({
   diagnosis: bookingSummaryDiagnosisSchema,
   mechanic: bookingSummaryMechanicSchema.optional(),
   signedUrl: z.string().url(),
+  quoteTotal: z.number().nonnegative().optional(),
+  paymentSetupComplete: z.boolean().optional(),
 });
 
 export type BookingSummary = z.infer<typeof bookingSummarySchema>;

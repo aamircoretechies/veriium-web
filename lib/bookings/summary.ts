@@ -3,6 +3,7 @@ import { buildSignedJobUrl } from "@/lib/auth/signed-url";
 import { getJobById } from "@/lib/jobs/lookup";
 import { jobStatusOr } from "@/lib/jobs/status";
 import { getMechanicById } from "@/lib/mechanics/lookup";
+import { isJobPaymentSetupComplete } from "@/lib/payments/assert-setup-complete";
 import type { BookingSummary } from "@/types/api/booking-summary";
 import type { DiagnosisFields } from "@/types/airtable/diagnoses";
 import type {
@@ -129,6 +130,8 @@ export async function getBookingSummary(jobId: string): Promise<BookingSummary> 
     };
   }
 
+  const paymentSetupComplete = await isJobPaymentSetupComplete(jobId);
+
   return {
     jobId,
     status: jobStatusOr(job.fields.status),
@@ -152,5 +155,7 @@ export async function getBookingSummary(jobId: string): Promise<BookingSummary> 
     },
     mechanic,
     signedUrl: await buildSignedJobUrl(jobId),
+    quoteTotal: job.fields.quote_total,
+    paymentSetupComplete,
   };
 }

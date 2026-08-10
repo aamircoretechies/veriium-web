@@ -35,5 +35,5 @@ export default async function DriverJobPage({
     throw error;
   }
 
-  return <JobStatus />;
+  return <JobStatus jobId={jobId} token={token} />;
 }
