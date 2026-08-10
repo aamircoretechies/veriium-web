@@ -28,6 +28,13 @@ describe("buildTier2Formula (W2-B §8.2 confirmation)", () => {
     assert.match(formula, /availability_status.*busy/);
   });
 
+  it("requires fresh availability_updated_at for available mechanics (W2-G)", () => {
+    const formula = buildTier2Formula(QUERY);
+    assert.match(formula, /availability_updated_at/);
+    assert.match(formula, /IS_AFTER/);
+    assert.match(formula, /DATEADD/);
+  });
+
   it("filters by job ZIP", () => {
     const formula = buildTier2Formula(QUERY);
     assert.match(formula, /30043/);
@@ -49,6 +56,15 @@ describe("buildTier2Formula (W2-B §8.2 confirmation)", () => {
   });
 });
 
+describe("buildTier1Formula (W2-G §4.8 freshness)", () => {
+  it("requires fresh availability_updated_at", () => {
+    const formula = buildTier1Formula(QUERY);
+    assert.match(formula, /availability_updated_at/);
+    assert.match(formula, /IS_AFTER/);
+    assert.match(formula, /DATEADD/);
+  });
+});
+
 describe("buildTier3Formula (W2-C §8.3 confirmation)", () => {
   it("requires approved mechanics with setup wizard complete", () => {
     const formula = buildTier3Formula(QUERY);
@@ -61,6 +77,13 @@ describe("buildTier3Formula (W2-C §8.3 confirmation)", () => {
     const formula = buildTier3Formula(QUERY);
     assert.match(formula, /availability_status.*available/);
     assert.doesNotMatch(formula, /availability_status.*busy/);
+  });
+
+  it("requires fresh availability_updated_at (W2-G)", () => {
+    const formula = buildTier3Formula(QUERY);
+    assert.match(formula, /availability_updated_at/);
+    assert.match(formula, /IS_AFTER/);
+    assert.match(formula, /DATEADD/);
   });
 
   it("filters by job ZIP", () => {

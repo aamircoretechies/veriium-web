@@ -229,6 +229,7 @@ async function main(): Promise<void> {
     if (mechanicId === tier1MechId) {
       await client.updateRecord("mechanics", mechanicId, {
         availability_status: "available",
+        availability_updated_at: new Date().toISOString(),
         last_assigned_at: null,
       });
       return;
@@ -244,6 +245,7 @@ async function main(): Promise<void> {
 
     await client.updateRecord("mechanics", mechanicId, {
       availability_status: "available",
+      availability_updated_at: new Date().toISOString(),
       last_assigned_at: new Date().toISOString(),
     });
   }
@@ -786,6 +788,52 @@ async function main(): Promise<void> {
     assert(
       smsLog.some((row) => row.to === tier2MechBRecord.fields.phone_number),
       "SMS sent to eligible tier2MechB",
+    );
+  });
+
+  console.log("\nW2-G stale availability excludes matching:");
+
+  await trackResult("W2-G: stale-available mechanic excluded from Tier 1 pool", async () => {
+    const isolatedDriver = await seedDriver("w2g-pool");
+    const staleMechId = await seedMechanic("w2g-stale", {
+      service_zip_codes: ISOLATED_ZIP,
+      last_assigned_at: null,
+      availability_updated_at: new Date(
+        Date.now() - 8 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
+    });
+    const { listTier1Mechanics } = await import("@/lib/matching/query");
+    const pool = await listTier1Mechanics({
+      zipCode: ISOLATED_ZIP,
+      category: TEST_CATEGORY,
+      serviceType: "mobile_repair",
+    });
+    assert(
+      !pool.some((row) => row.id === staleMechId),
+      "stale mechanic not in tier1 pool",
+    );
+    void isolatedDriver;
+  });
+
+  await trackResult("W2-G: runTier1 skips stale-available sole mechanic", async () => {
+    const isolatedDriver = await seedDriver("w2g-run");
+    const staleMechId = await seedMechanic("w2g-sole", {
+      service_zip_codes: ISOLATED_ZIP,
+      last_assigned_at: null,
+      availability_updated_at: new Date(
+        Date.now() - 8 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
+    });
+    const jobId = await seedJob(isolatedDriver, { zip_code: ISOLATED_ZIP });
+    clearSmsLog();
+    const result = await runTier1(jobId);
+    const job = await getJobById(jobId);
+    const stalePhone = (await getMechanicById(staleMechId)).fields.phone_number;
+    assert(result === null, "no tier1 match for stale mechanic");
+    assert(!job.fields.mechanic_id?.length, "no mechanic linked");
+    assert(
+      !getSmsLog().some((row) => row.to === stalePhone),
+      "no SMS to stale mechanic",
     );
   });
 

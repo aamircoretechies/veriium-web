@@ -1,3 +1,4 @@
+import { availabilityIsFresh } from "@/lib/mechanics/availability-freshness";
 import { getMechanicById } from "@/lib/mechanics/lookup";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { MechanicFields } from "@/types/airtable/mechanics";
@@ -9,13 +10,15 @@ export function isMechanicEligibleForTierSend(
   mechanic: AirtableRecord<MechanicFields>,
   tier: MatchSendTier,
 ): boolean {
-  const status = mechanic.fields.availability_status ?? "offline";
+  const { fields } = mechanic;
+  const status = fields.availability_status ?? "offline";
+  const fresh = availabilityIsFresh(fields.availability_updated_at);
 
   if (tier === 2) {
-    return status === "available" || status === "busy";
+    return status === "busy" || (status === "available" && fresh);
   }
 
-  return status === "available";
+  return status === "available" && fresh;
 }
 
 /** Re-fetch mechanic and return the record only if still eligible for the tier send. */

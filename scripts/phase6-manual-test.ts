@@ -1167,6 +1167,20 @@ async function main(): Promise<void> {
         mechanic.fields.availability_status === "offline",
         "availability_status offline",
       );
+
+      const actionItems = await client.listRecords("action-items", {
+        filterByFormula: `AND({status} = 'open', {type} = '${ACTION_ITEM_TYPE.MECHANIC_AVAILABILITY_INACTIVE}')`,
+        maxRecords: 100,
+      });
+      const matched = actionItems.records.filter((row) =>
+        row.fields.linked_mechanic_id?.includes(mechanicId),
+      );
+      for (const row of matched) {
+        if (!created.actionItems.includes(row.id)) {
+          created.actionItems.push(row.id);
+        }
+      }
+      assert(matched.length >= 1, "mechanic availability inactive action item");
     },
   );
 

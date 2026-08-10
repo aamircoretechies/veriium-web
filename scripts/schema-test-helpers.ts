@@ -37,6 +37,7 @@ export function mechanicSeedFields(
     phone_number: `+1555020${suffix.padStart(4, "0")}`,
     profile_photo_url: "https://res.cloudinary.com/veriium-test/mechanic.jpg",
     availability_status: "available",
+    availability_updated_at: new Date().toISOString(),
     service_zip_codes: TEST_ZIP,
     service_categories: [TEST_CATEGORY],
     tools_confirmed: ["Basic tool kit"],

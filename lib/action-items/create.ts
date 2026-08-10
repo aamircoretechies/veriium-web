@@ -1,5 +1,6 @@
 import { getAirtableClient } from "@/lib/airtable";
 import { and, eq } from "@/lib/airtable/formula";
+import { getStaleAvailabilitySeconds } from "@/lib/edge/constants";
 import { FIELDS } from "@/types/airtable/generated/fields";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 import { ACTION_ITEM_TYPE, type ActionItemType } from "@/types/airtable/enums";
@@ -27,6 +28,60 @@ export async function hasOpenActionItem(
   return response.records.some(
     (row) => row.fields.linked_job_id?.includes(jobId) ?? false,
   );
+}
+
+/** Return true when an open action item of the given type already exists for the mechanic. */
+export async function hasOpenMechanicActionItem(
+  mechanicId: string,
+  type: ActionItemType,
+): Promise<boolean> {
+  const client = getAirtableClient();
+  const formula = and(
+    eq(FIELDS.ActionItems.type, type),
+    eq(FIELDS.ActionItems.status, "open"),
+  );
+
+  const response = await client.listRecords<ActionItemFields>("action-items", {
+    filterByFormula: formula,
+    maxRecords: 100,
+  });
+
+  return response.records.some(
+    (row) => row.fields.linked_mechanic_id?.includes(mechanicId) ?? false,
+  );
+}
+
+export type CreateMechanicAvailabilityInactiveActionItemInput = {
+  mechanicId: string;
+  mechanicName?: string;
+};
+
+export async function createMechanicAvailabilityInactiveActionItem(
+  input: CreateMechanicAvailabilityInactiveActionItemInput,
+): Promise<string | null> {
+  const type = ACTION_ITEM_TYPE.MECHANIC_AVAILABILITY_INACTIVE;
+
+  if (await hasOpenMechanicActionItem(input.mechanicId, type)) {
+    return null;
+  }
+
+  const staleDays = Math.round(getStaleAvailabilitySeconds() / 86400);
+  const label = input.mechanicName?.trim() || input.mechanicId;
+  const actionItemFields = createActionItemSchema.parse({
+    type,
+    status: "open",
+    description: `Mechanic ${label} availability marked inactive (stale after ${staleDays}d).`,
+    linked_mechanic_id: [input.mechanicId],
+  });
+
+  const client = getAirtableClient();
+  const record = await client.createRecord<ActionItemFields>(
+    "action-items",
+    actionItemFields,
+    { typecast: true },
+  );
+
+  return record.id;
 }
 
 export type CreateAwaitingAdminMatchActionItemInput = {

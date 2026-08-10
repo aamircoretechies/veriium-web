@@ -1,5 +1,6 @@
 import { getAirtableClient } from "@/lib/airtable";
 import { and, eq, findInJoin, isBlank, notBlank, or } from "@/lib/airtable/formula";
+import { buildFreshAvailabilityFormulaClause } from "@/lib/mechanics/availability-freshness";
 import { serviceCategoryMatchClause } from "@/lib/mechanics/normalize-categories";
 import { FIELDS } from "@/types/airtable/generated/fields";
 import type { AirtableRecord } from "@/types/airtable/common";
@@ -49,10 +50,18 @@ function approvedMechanicClauses(): string[] {
   ];
 }
 
+/** §4.8 — `available` with a fresh `availability_updated_at` (excludes stale + offline). */
+function availableAndFreshClause(): string {
+  return and(
+    eq(FIELDS.Mechanics.availability_status, "available"),
+    buildFreshAvailabilityFormulaClause(),
+  );
+}
+
 export function buildTier1Formula(query: MechanicPoolQuery): string {
   return joinClauses([
     ...approvedMechanicClauses(),
-    eq(FIELDS.Mechanics.availability_status, "available"),
+    availableAndFreshClause(),
     zipClause(query.zipCode),
     query.category ? serviceCategoryMatchClause(query.category) : "",
     serviceTypeClause(query.serviceType),
@@ -65,8 +74,8 @@ export function buildTier2Formula(query: MechanicPoolQuery): string {
   return joinClauses([
     ...approvedMechanicClauses(),
     or(
-      eq(FIELDS.Mechanics.availability_status, "available"),
       eq(FIELDS.Mechanics.availability_status, "busy"),
+      availableAndFreshClause(),
     ),
     zipClause(query.zipCode),
     query.category ? serviceCategoryMatchClause(query.category) : "",
@@ -78,7 +87,7 @@ export function buildTier2Formula(query: MechanicPoolQuery): string {
 export function buildTier3Formula(query: MechanicPoolQuery): string {
   return joinClauses([
     ...approvedMechanicClauses(),
-    eq(FIELDS.Mechanics.availability_status, "available"),
+    availableAndFreshClause(),
     zipClause(query.zipCode),
     serviceTypeClause(query.serviceType),
   ]);

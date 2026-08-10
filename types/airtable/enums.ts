@@ -86,6 +86,7 @@ export const ACTION_ITEM_TYPE = {
   PARTS_FLAGGED: "Parts cost flagged",
   RECEIPT_NOT_SUBMITTED: "Receipt not submitted",
   DRIVER_NON_RESPONSE_72H: "Driver non-response 72h",
+  MECHANIC_AVAILABILITY_INACTIVE: "Mechanic availability inactive",
   CHARGEBACK: "Chargeback received",
 } as const satisfies Record<string, ActionItemsType>;
 

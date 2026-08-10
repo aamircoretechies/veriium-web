@@ -1,7 +1,8 @@
+import { createMechanicAvailabilityInactiveActionItem } from "@/lib/action-items/create";
 import { getAirtableClient } from "@/lib/airtable";
-import { getStaleAvailabilitySeconds } from "@/lib/edge/constants";
 import type { MechanicFields } from "@/types/airtable/mechanics";
 import { updateMechanicSchema } from "@/types/airtable/schemas";
+import { availabilityIsStale } from "./availability-freshness";
 import { getMechanicById } from "./lookup";
 
 export type StaleCheckResult = {
@@ -10,15 +11,6 @@ export type StaleCheckResult = {
   reason?: string;
   action?: "marked_stale";
 };
-
-function availabilityIsStale(updatedAt: string | undefined): boolean {
-  if (!updatedAt) {
-    return true;
-  }
-
-  const elapsedMs = Date.now() - new Date(updatedAt).getTime();
-  return elapsedMs >= getStaleAvailabilitySeconds() * 1000;
-}
 
 /**
  * QStash worker — mark mechanic `stale` when availability was not refreshed (§4.8).
@@ -48,6 +40,18 @@ export async function runStaleAvailabilityCheck(
     fields as Partial<MechanicFields>,
     { typecast: true },
   );
+
+  try {
+    await createMechanicAvailabilityInactiveActionItem({
+      mechanicId,
+      mechanicName: mechanic.fields.name,
+    });
+  } catch (error) {
+    console.error(
+      `[mechanics/stale-check] Failed to create action item for ${mechanicId}:`,
+      error,
+    );
+  }
 
   return { mechanicId, action: "marked_stale" };
 }
