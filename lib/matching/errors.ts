@@ -49,6 +49,20 @@ export class MechanicNotAssignedError extends Error {
   }
 }
 
+export class MechanicHasActiveJobError extends Error {
+  readonly mechanicId: string;
+  readonly activeJobId: string;
+
+  constructor(mechanicId: string, activeJobId: string) {
+    super(
+      `Mechanic ${mechanicId} already has an active job (${activeJobId})`,
+    );
+    this.name = "MechanicHasActiveJobError";
+    this.mechanicId = mechanicId;
+    this.activeJobId = activeJobId;
+  }
+}
+
 export class InvalidMatchResponseError extends Error {
   readonly command: string;
   readonly jobStatus: JobStatus;

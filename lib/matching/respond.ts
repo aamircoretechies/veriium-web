@@ -1,4 +1,5 @@
 import { getDriverById } from "@/lib/drivers/lookup";
+import { findCommittedJobForMechanic } from "@/lib/jobs/lookup";
 import { InvalidJobTransitionError } from "@/lib/jobs/transitions";
 import { getJobById } from "@/lib/jobs/lookup";
 import { updateJobStatus } from "@/lib/jobs/update";
@@ -8,6 +9,7 @@ import { sendSms } from "@/lib/twilio/sms";
 import {
   matchAcceptedDriver,
   matchAlreadyAssigned,
+  mechanicHasActiveJob,
 } from "@/lib/twilio/templates";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { JobFields } from "@/types/airtable/jobs";
@@ -15,6 +17,7 @@ import { escalateToTier } from "./escalate";
 import {
   AlreadyAssignedError,
   InvalidMatchResponseError,
+  MechanicHasActiveJobError,
   MechanicNotAssignedError,
 } from "./errors";
 import { markMechanicBusy } from "./mechanic-update";
@@ -24,7 +27,12 @@ export type MatchResponseCommand = "ACCEPT" | "DECLINE" | "YES" | "NO";
 export type MatchResponseResult = {
   jobId: string;
   status: string;
-  action: "accepted" | "declined" | "ignored" | "already_assigned";
+  action:
+    | "accepted"
+    | "declined"
+    | "ignored"
+    | "already_assigned"
+    | "has_active_job";
 };
 
 async function notifyDriverAccepted(
@@ -53,10 +61,22 @@ function mechanicLinkedToJob(
   return job.fields.mechanic_id?.includes(mechanicId) ?? false;
 }
 
+async function assertMechanicCanAcceptJob(
+  mechanicId: string,
+  targetJobId: string,
+): Promise<void> {
+  const committed = await findCommittedJobForMechanic(mechanicId);
+  if (committed && committed.id !== targetJobId) {
+    throw new MechanicHasActiveJobError(mechanicId, committed.id);
+  }
+}
+
 async function acceptTier1Assignment(
   job: AirtableRecord<JobFields>,
   mechanicId: string,
 ): Promise<MatchResponseResult> {
+  await assertMechanicCanAcceptJob(mechanicId, job.id);
+
   if (job.fields.status === JOB_STATUS.accepted_by_mechanic) {
     throw new AlreadyAssignedError(job.id);
   }
@@ -115,6 +135,8 @@ async function acceptBroadcast(
   job: AirtableRecord<JobFields>,
   mechanicId: string,
 ): Promise<MatchResponseResult> {
+  await assertMechanicCanAcceptJob(mechanicId, job.id);
+
   if (job.fields.status === JOB_STATUS.accepted_by_mechanic) {
     throw new AlreadyAssignedError(job.id);
   }
@@ -161,6 +183,19 @@ async function notifyAlreadyAssigned(mechanicId: string): Promise<void> {
   }
 }
 
+async function notifyHasActiveJob(mechanicId: string): Promise<void> {
+  try {
+    const mechanic = await getMechanicById(mechanicId);
+    if (!mechanic.fields.phone_number) return;
+    await sendSms(mechanic.fields.phone_number, mechanicHasActiveJob());
+  } catch (error) {
+    console.error(
+      `[matching/respond] Failed to send has-active-job SMS to ${mechanicId}:`,
+      error,
+    );
+  }
+}
+
 export async function handleMatchResponse(
   jobId: string,
   mechanicId: string,
@@ -192,6 +227,14 @@ export async function handleMatchResponse(
         jobId,
         status: job.fields.status ?? "",
         action: "already_assigned",
+      };
+    }
+    if (error instanceof MechanicHasActiveJobError) {
+      await notifyHasActiveJob(mechanicId);
+      return {
+        jobId,
+        status: job.fields.status ?? "",
+        action: "has_active_job",
       };
     }
     throw error;

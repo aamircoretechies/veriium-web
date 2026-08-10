@@ -248,7 +248,43 @@ async function main(): Promise<void> {
     });
   }
 
+  async function releaseCommittedJobs(): Promise<void> {
+    const { MECHANIC_COMMITMENT_STATUSES } = await import(
+      "@/lib/jobs/transitions"
+    );
+    const { markMechanicAvailable } = await import(
+      "@/lib/matching/mechanic-update"
+    );
+    const releasableStatuses = new Set<string>([
+      ...MECHANIC_COMMITMENT_STATUSES,
+      JOB_STATUS.matched_awaiting_response,
+      JOB_STATUS.awaiting_admin_match,
+    ]);
+
+    for (const jobId of created.jobs) {
+      try {
+        const job = await getJobById(jobId);
+        const status = job.fields.status;
+        if (status && releasableStatuses.has(status)) {
+          await updateJobStatus(jobId, {
+            status: JOB_STATUS.cancelled,
+            mechanic_id: [],
+          });
+        }
+      } catch {
+        // best-effort between tests
+      }
+    }
+
+    await Promise.all(
+      [tier1MechId, tier2MechA, tier2MechB, tier3OnlyMechId].map((id) =>
+        markMechanicAvailable(id).catch(() => undefined),
+      ),
+    );
+  }
+
   async function prepareMechanics(): Promise<void> {
+    await releaseCommittedJobs();
     await Promise.all(
       [
         tier1MechId,
@@ -409,6 +445,145 @@ async function main(): Promise<void> {
     const job = await getJobById(jobId);
     assert(second.action === "already_assigned", "already_assigned");
     assert(job.fields.mechanic_id?.[0] === tier2MechA, "first winner kept");
+  });
+
+  async function ensureJobAtTier2(jobId: string): Promise<void> {
+    const job = await getJobById(jobId);
+    if (job.fields.match_tier === 1) {
+      const mechanicId = job.fields.mechanic_id?.[0];
+      if (mechanicId) {
+        await handleMatchResponse(jobId, mechanicId, "DECLINE");
+      } else {
+        await escalateToTier(jobId, 2);
+      }
+      return;
+    }
+
+    if (job.fields.match_tier !== 2) {
+      await escalateToTier(jobId, 2);
+    }
+  }
+
+  console.log("\nW2-F one active job per mechanic:");
+
+  const { markMechanicAvailable } = await import("@/lib/matching/mechanic-update");
+  const { mechanicHasActiveJob } = await import("@/lib/twilio/templates");
+
+  await trackResult("W2-F: Tier 1 second ACCEPT blocked", async () => {
+    await prepareMechanics();
+    const jobA = await seedJob(driverId);
+    await beginMatching(jobA);
+    await handleMatchResponse(jobA, tier1MechId, "ACCEPT");
+
+    const jobB = await seedJob(driverId);
+    await beginMatching(jobB);
+    await updateJobStatus(jobB, { mechanic_id: [tier1MechId] });
+
+    clearSmsLog();
+    const result = await handleMatchResponse(jobB, tier1MechId, "ACCEPT");
+    const jobBAfter = await getJobById(jobB);
+    const jobAAfter = await getJobById(jobA);
+    const mechanic = await getMechanicById(tier1MechId);
+    const smsLog = getSmsLog();
+
+    assert(result.action === "has_active_job", "has_active_job");
+    assert(
+      jobBAfter.fields.status === JOB_STATUS.matched_awaiting_response,
+      "job B still awaiting response",
+    );
+    assert(
+      jobAAfter.fields.status === JOB_STATUS.accepted_by_mechanic,
+      "job A still accepted",
+    );
+    assert(mechanic.fields.availability_status === "busy", "mechanic still busy");
+    assert(
+      smsLog.some((row) => row.body === mechanicHasActiveJob()),
+      "has-active-job SMS sent",
+    );
+  });
+
+  await trackResult("W2-F: Tier 2 YES blocked while busy", async () => {
+    await prepareMechanics();
+    const jobA = await seedJob(driverId);
+    await beginMatching(jobA);
+    await handleMatchResponse(jobA, tier1MechId, "DECLINE");
+    await handleMatchResponse(jobA, tier2MechA, "YES");
+
+    const jobB = await seedJob(driverId);
+    await beginMatching(jobB);
+    await ensureJobAtTier2(jobB);
+
+    clearSmsLog();
+    const result = await handleMatchResponse(jobB, tier2MechA, "YES");
+    const jobBAfter = await getJobById(jobB);
+    const smsLog = getSmsLog();
+
+    assert(result.action === "has_active_job", "has_active_job");
+    assert(
+      jobBAfter.fields.status === JOB_STATUS.matched_awaiting_response,
+      "job B unassigned",
+    );
+    assert(!jobBAfter.fields.mechanic_id?.length, "no mechanic on job B");
+    assert(
+      smsLog.some((row) => row.body === mechanicHasActiveJob()),
+      "has-active-job SMS sent",
+    );
+  });
+
+  await trackResult("W2-F: Tier 2 broadcast still reaches busy mechanic", async () => {
+    await prepareMechanics();
+    const jobA = await seedJob(driverId);
+    await beginMatching(jobA);
+    await handleMatchResponse(jobA, tier1MechId, "DECLINE");
+    await handleMatchResponse(jobA, tier2MechA, "YES");
+
+    const jobB = await seedJob(driverId);
+    clearSmsLog();
+    await beginMatching(jobB);
+    await ensureJobAtTier2(jobB);
+    const tier2MechAPhone = (await getMechanicById(tier2MechA)).fields
+      .phone_number;
+    const smsLog = getSmsLog();
+
+    assert(
+      smsLog.some((row) => row.to === tier2MechAPhone),
+      "broadcast SMS still sent to busy mechanic",
+    );
+  });
+
+  await trackResult("W2-F: re-accept after markMechanicAvailable", async () => {
+    await prepareMechanics();
+    const jobA = await seedJob(driverId);
+    await beginMatching(jobA);
+    await handleMatchResponse(jobA, tier1MechId, "ACCEPT");
+    await updateJobStatus(jobA, {
+      status: JOB_STATUS.cancelled,
+      mechanic_id: [],
+    });
+    await markMechanicAvailable(tier1MechId);
+
+    const jobB = await seedJob(driverId);
+    await beginMatching(jobB);
+    const jobBBeforeAccept = await getJobById(jobB);
+    if (
+      jobBBeforeAccept.fields.match_tier !== 1 ||
+      jobBBeforeAccept.fields.mechanic_id?.[0] !== tier1MechId
+    ) {
+      await updateJobStatus(jobB, {
+        status: JOB_STATUS.matched_awaiting_response,
+        match_tier: 1,
+        mechanic_id: [tier1MechId],
+      });
+    }
+    const result = await handleMatchResponse(jobB, tier1MechId, "ACCEPT");
+    const jobBAfter = await getJobById(jobB);
+
+    assert(result.action === "accepted", "accepted after release");
+    assert(
+      jobBAfter.fields.status === JOB_STATUS.accepted_by_mechanic,
+      "job B accepted",
+    );
+    assert(jobBAfter.fields.mechanic_id?.[0] === tier1MechId, "mechanic linked");
   });
 
   await trackResult("Tier 3: escalate + YES from category-only mechanic", async () => {

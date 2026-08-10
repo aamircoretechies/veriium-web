@@ -24,6 +24,7 @@ export {
   approved,
   matchAcceptedDriver,
   matchAlreadyAssigned,
+  mechanicHasActiveJob,
   needsMoreInfo,
   rejected,
   suspended,

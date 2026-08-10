@@ -97,6 +97,15 @@ export const ACTIVE_SERVICE_STATUSES = [
 
 export type ActiveServiceStatus = (typeof ACTIVE_SERVICE_STATUSES)[number];
 
+/** Statuses where a mechanic is committed and cannot accept another job (W2-F). */
+export const MECHANIC_COMMITMENT_STATUSES = [
+  JOB_STATUS.matched_awaiting_payment,
+  ...ACTIVE_SERVICE_STATUSES,
+] as const;
+
+export type MechanicCommitmentStatus =
+  (typeof MECHANIC_COMMITMENT_STATUSES)[number];
+
 export const SERVICE_TRANSITIONS: Partial<
   Record<ServicePhaseStatus, readonly JobStatus[]>
 > = {

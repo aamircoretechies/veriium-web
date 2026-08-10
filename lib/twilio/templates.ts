@@ -96,6 +96,11 @@ export function matchAlreadyAssigned(): string {
   return "Veriium: This job was already claimed by another mechanic. Thanks for responding!";
 }
 
+/** Sent when a mechanic tries ACCEPT/YES while already on another job (§6.1). */
+export function mechanicHasActiveJob(): string {
+  return "Veriium: You're already on an active job. Finish or complete your current job before accepting another. Use ENROUTE, ARRIVED, etc. for your active job.";
+}
+
 /** §7.2 — Driver update when mechanic begins diagnosing. */
 export function serviceDiagnosingDriver(): string {
   return "Veriium: Your mechanic has started diagnosing your vehicle. You'll receive a quote shortly.";

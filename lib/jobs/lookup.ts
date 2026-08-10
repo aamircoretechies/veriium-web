@@ -15,7 +15,10 @@ import { normalizeUsPhone } from "@/lib/phone";
 import { mechanicLinkedToJob } from "@/lib/service/guards";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { JobFields } from "@/types/airtable/jobs";
-import { ACTIVE_SERVICE_STATUSES } from "./transitions";
+import {
+  ACTIVE_SERVICE_STATUSES,
+  MECHANIC_COMMITMENT_STATUSES,
+} from "./transitions";
 
 /** Fetch a job row by Airtable record ID. */
 export async function getJobById(
@@ -94,6 +97,34 @@ function buildStatusOrFormula(statuses: readonly string[]): string {
   return or(...statuses.map((status) => eq(FIELDS.Jobs.status, status)));
 }
 
+async function findJobForMechanicByStatuses(
+  mechanicId: string,
+  statuses: readonly string[],
+): Promise<AirtableRecord<JobFields> | null> {
+  const client = getAirtableClient();
+  const statusFilter = buildStatusOrFormula(statuses);
+
+  const response = await client.listRecords<JobFields>("jobs", {
+    filterByFormula: statusFilter,
+    maxRecords: 100,
+    sort: [{ field: FIELDS.Jobs.created_at, direction: "desc" }],
+  });
+
+  return (
+    response.records.find((job) => mechanicLinkedToJob(job, mechanicId)) ??
+    null
+  );
+}
+
+export async function findCommittedJobForMechanic(
+  mechanicId: string,
+): Promise<AirtableRecord<JobFields> | null> {
+  return findJobForMechanicByStatuses(
+    mechanicId,
+    MECHANIC_COMMITMENT_STATUSES,
+  );
+}
+
 export async function findActiveJobForMechanic(
   phone: string,
 ): Promise<AirtableRecord<JobFields> | null> {
@@ -103,19 +134,7 @@ export async function findActiveJobForMechanic(
     return null;
   }
 
-  const client = getAirtableClient();
-  const statusFilter = buildStatusOrFormula(ACTIVE_SERVICE_STATUSES);
-
-  const response = await client.listRecords<JobFields>("jobs", {
-    filterByFormula: statusFilter,
-    maxRecords: 100,
-    sort: [{ field: FIELDS.Jobs.created_at, direction: "desc" }],
-  });
-
-  return (
-    response.records.find((job) => mechanicLinkedToJob(job, mechanic.id)) ??
-    null
-  );
+  return findJobForMechanicByStatuses(mechanic.id, ACTIVE_SERVICE_STATUSES);
 }
 
 export async function findJobAwaitingDriverResponse(

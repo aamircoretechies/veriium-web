@@ -13,6 +13,7 @@ export {
   AlreadyAssignedError,
   InvalidMatchResponseError,
   JobNotMatchableError,
+  MechanicHasActiveJobError,
   MechanicNotAssignedError,
   NoMechanicAvailableError,
 } from "./errors";
