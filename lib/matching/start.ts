@@ -3,6 +3,7 @@ import { updateJobStatus } from "@/lib/jobs/update";
 import { JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { scheduleJob } from "@/lib/qstash/schedule";
 import {
+  buildEscalationNotBefore,
   getTierDelaysSeconds,
   MATCH_ESCALATE_PATH,
 } from "./constants";
@@ -18,26 +19,28 @@ export type BeginMatchingResult = {
 
 async function scheduleEscalations(
   jobId: string,
-  matchedAtIso: string,
+  matchTierStartedAtIso: string,
 ): Promise<void> {
-  const delays = getTierDelaysSeconds();
-  const baseUnix = Math.floor(new Date(matchedAtIso).getTime() / 1000);
+  const notBefore = buildEscalationNotBefore(
+    matchTierStartedAtIso,
+    getTierDelaysSeconds(),
+  );
 
   await Promise.all([
     scheduleJob({
       path: MATCH_ESCALATE_PATH,
       body: { jobId, tier: 2 },
-      notBefore: baseUnix + delays.tier2,
+      notBefore: notBefore.tier2,
     }),
     scheduleJob({
       path: MATCH_ESCALATE_PATH,
       body: { jobId, tier: 3 },
-      notBefore: baseUnix + delays.tier3,
+      notBefore: notBefore.tier3,
     }),
     scheduleJob({
       path: MATCH_ESCALATE_PATH,
       body: { jobId, tier: 4 },
-      notBefore: baseUnix + delays.tier4,
+      notBefore: notBefore.tier4,
     }),
   ]);
 }

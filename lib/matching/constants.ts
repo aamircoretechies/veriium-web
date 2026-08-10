@@ -2,7 +2,7 @@
 export const MECHANIC_ASSIGNMENT_COOLDOWN_MINUTES = 15;
 
 /**
- * Seconds from `matched_at` when each escalation fires (§6.1).
+ * Seconds from `match_tier_started_at` when each QStash escalation fires (§8.4).
  * Tier 2: +10 min, Tier 3: +25 min total, Tier 4: +55 min total.
  */
 export const DEFAULT_TIER_DELAYS_SECONDS = {
@@ -21,7 +21,7 @@ export const MATCH_ESCALATE_PATH = "/api/jobs/match/escalate";
 
 /**
  * Optional local override: `MATCHING_TIER_DELAYS_SECONDS=60,120,180`
- * (tier2, tier3, tier4 delays in seconds from `matched_at`).
+ * (tier2, tier3, tier4 delays in seconds from `match_tier_started_at`).
  */
 export function getTierDelaysSeconds(): TierDelaysSeconds {
   const raw = process.env.MATCHING_TIER_DELAYS_SECONDS?.trim();
@@ -45,5 +45,18 @@ export function getTierDelaysSeconds(): TierDelaysSeconds {
     tier2: parts[0]!,
     tier3: parts[1]!,
     tier4: parts[2]!,
+  };
+}
+
+/** Unix timestamps (seconds) for QStash `notBefore` per escalation tier (§8.4). */
+export function buildEscalationNotBefore(
+  matchTierStartedAtIso: string,
+  delays: TierDelaysSeconds = getTierDelaysSeconds(),
+): { tier2: number; tier3: number; tier4: number } {
+  const baseUnix = Math.floor(new Date(matchTierStartedAtIso).getTime() / 1000);
+  return {
+    tier2: baseUnix + delays.tier2,
+    tier3: baseUnix + delays.tier3,
+    tier4: baseUnix + delays.tier4,
   };
 }

@@ -60,6 +60,7 @@ export function buildTier1Formula(query: MechanicPoolQuery): string {
   ]);
 }
 
+/** Build Scope §8.2 — approved + available|busy + ZIP + category (retained; dropped at Tier 3). */
 export function buildTier2Formula(query: MechanicPoolQuery): string {
   return joinClauses([
     ...approvedMechanicClauses(),
@@ -73,6 +74,7 @@ export function buildTier2Formula(query: MechanicPoolQuery): string {
   ]);
 }
 
+/** Build Scope §8.3 — approved + available + ZIP; category dropped (open call). */
 export function buildTier3Formula(query: MechanicPoolQuery): string {
   return joinClauses([
     ...approvedMechanicClauses(),

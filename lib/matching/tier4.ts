@@ -18,6 +18,7 @@ function getAdminPhone(): string {
   return phone;
 }
 
+/** Build Scope §8.4 — after 55 min with no accept: admin SMS + manual Airtable assign. */
 export async function runTier4(jobId: string): Promise<void> {
   const job = await getJobById(jobId);
   const status = job.fields.status;
