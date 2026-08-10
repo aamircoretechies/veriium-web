@@ -1,9 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import imgCarRepair from "../LandingDesktopV2/4943cb7fc6a48d7dc22bbbde539341ff388b0172.webp";
 import Footer from "../../../app/components/Footer";
 import MechanicTopNav from "./MechanicTopNav";
+import { useMechanicAuth } from "./MechanicAuthContext";
+import type { MechanicJobListItem } from "@/types/api/mechanic-jobs";
+
+const TOKEN_KEY = "veriium_mechanic_token";
 
 interface RepairItem {
   id: string;
@@ -18,47 +22,20 @@ interface RepairItem {
   image: string;
 }
 
-const activeRepairs: RepairItem[] = [
-  {
-    id: "1",
-    status: "In Progress",
-    title: "Coolant Leak",
-    customerName: "Andrea S.",
-    vehicle: "Bugatti Chiron",
-    dateLabel: "Requested",
-    dateValue: "Monday, Dec 1 @ 10:30 AM",
-    costLabel: "Est. Cost",
-    costValue: "$200 – $350",
+function toRepairItem(item: MechanicJobListItem): RepairItem {
+  return {
+    id: item.jobId,
+    status: item.listStatus === "active" ? "In Progress" : "Completed",
+    title: item.title,
+    customerName: item.customerName,
+    vehicle: item.vehicleLabel,
+    dateLabel: item.dateLabel,
+    dateValue: item.dateValue,
+    costLabel: item.costLabel,
+    costValue: item.costValue,
     image: imgCarRepair.src,
-  },
-  {
-    id: "2",
-    status: "In Progress",
-    title: "Brake Squeal",
-    customerName: "Michael R.",
-    vehicle: "BMW M4",
-    dateLabel: "Requested",
-    dateValue: "Monday, Dec 1 @ 9:15 AM",
-    costLabel: "Est. Cost",
-    costValue: "$150 – $250",
-    image: imgCarRepair.src,
-  },
-];
-
-const completedRepairs: RepairItem[] = [
-  {
-    id: "3",
-    status: "Completed",
-    title: "Check Engine Light",
-    customerName: "Sarah K.",
-    vehicle: "Audi RS7",
-    dateLabel: "Completed",
-    dateValue: "Friday, Nov 28, 2025",
-    costLabel: "Final Cost",
-    costValue: "$180",
-    image: imgCarRepair.src,
-  },
-];
+  };
+}
 
 function StatusBadge({ status }: { status: "In Progress" | "Completed" }) {
   return (
@@ -153,11 +130,76 @@ function WelcomeHeading({ name }: { name: string }) {
 }
 
 export default function MechanicDashboard() {
+  const { mechanic, hydrated, signOut } = useMechanicAuth();
+  const [activeRepairs, setActiveRepairs] = useState<RepairItem[]>([]);
+  const [completedRepairs, setCompletedRepairs] = useState<RepairItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!hydrated || !mechanic) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadJobs() {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) {
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/mechanics/jobs", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.status === 401 || res.status === 403) {
+          signOut();
+          return;
+        }
+
+        if (!res.ok) {
+          console.warn(`[MechanicDashboard] /api/mechanics/jobs returned ${res.status}`);
+          return;
+        }
+
+        const data = (await res.json()) as {
+          active: MechanicJobListItem[];
+          completed: MechanicJobListItem[];
+        };
+
+        if (cancelled) return;
+
+        setActiveRepairs(data.active.map(toRepairItem));
+        setCompletedRepairs(data.completed.map(toRepairItem));
+      } catch (error) {
+        console.warn("[MechanicDashboard] Failed to load jobs:", error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadJobs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, mechanic, signOut]);
+
+  const displayName = mechanic?.name ?? "";
+
   return (
     <div className="bg-white flex flex-col items-center relative w-full overflow-x-hidden min-h-screen" data-name="Mechanic Dashboard">
       <div className="relative z-10 w-full max-w-[1440px] px-[24px] md:px-[100px] flex flex-col gap-[40px] items-start mx-auto pb-[40px]">
         <MechanicTopNav activeTab="dashboard" />
-        <WelcomeHeading name="Daniel" />
+        <WelcomeHeading name={displayName} />
+
+        {loading && (
+          <p className="font-['Albert_Sans:Regular',sans-serif] text-[14px] text-[#666]">
+            Loading repairs…
+          </p>
+        )}
 
         <RepairSection title="Active Repairs" count={activeRepairs.length} repairs={activeRepairs} />
 
