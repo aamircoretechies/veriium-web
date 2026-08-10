@@ -40,6 +40,7 @@ export function mechanicSeedFields(
     service_zip_codes: TEST_ZIP,
     service_categories: [TEST_CATEGORY],
     tools_confirmed: ["Basic tool kit"],
+    setup_wizard_completed_at: new Date().toISOString(),
     ...overrides,
   };
 }

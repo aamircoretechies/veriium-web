@@ -311,6 +311,29 @@ async function main(): Promise<void> {
     assert(job.fields.mechanic_id?.[0] === tier1MechId, "mechanic linked");
   });
 
+  await trackResult("Tier 1: incomplete wizard excluded from pool", async () => {
+    const incompleteWizardMechId = await seedMechanic("06", {
+      last_assigned_at: null,
+      setup_wizard_completed_at: null,
+    });
+    await client.updateRecord("mechanics", tier1MechId, {
+      availability_status: "available",
+      last_assigned_at: null,
+    });
+    const jobId = await seedJob(driverId);
+    const result = await beginMatching(jobId);
+    const job = await getJobById(jobId);
+    assert(
+      result.tier1MechanicId === tier1MechId,
+      "setup-complete mechanic assigned",
+    );
+    assert(
+      result.tier1MechanicId !== incompleteWizardMechId,
+      "incomplete wizard excluded",
+    );
+    assert(job.fields.mechanic_id?.[0] === tier1MechId, "mechanic linked");
+  });
+
   await trackResult("Tier 1: ACCEPT → accepted_by_mechanic", async () => {
     await prepareMechanics();
     const jobId = await seedJob(driverId);

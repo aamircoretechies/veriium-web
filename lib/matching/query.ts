@@ -45,6 +45,7 @@ function approvedMechanicClauses(): string[] {
     eq(FIELDS.Mechanics.background_check_status, "cleared"),
     notBlank(FIELDS.Mechanics.profile_photo_url),
     notBlank(FIELDS.Mechanics.service_zip_codes),
+    notBlank(FIELDS.Mechanics.setup_wizard_completed_at),
   ];
 }
 
