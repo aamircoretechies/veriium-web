@@ -100,6 +100,26 @@ function getSmsLog(): SendSmsResult[] {
   );
 }
 
+function assertMatchAcceptedMechanicSms(
+  mechanicPhone: string,
+  driverPhone: string,
+  jobId: string,
+): void {
+  const smsLog = getSmsLog();
+  assert(
+    smsLog.some(
+      (row) =>
+        row.to === mechanicPhone &&
+        row.body.includes("Job confirmed") &&
+        row.body.includes(driverPhone) &&
+        row.body.includes("ENROUTE") &&
+        row.body.includes(`/m/job/${jobId}`) &&
+        row.body.includes("token="),
+    ),
+    "mechanic post-accept SMS with signed job URL",
+  );
+}
+
 async function probeAirtable(): Promise<boolean> {
   const baseId = process.env.AIRTABLE_BASE_ID;
   const tableId = process.env.AIRTABLE_TABLE_DRIVERS;
@@ -144,6 +164,7 @@ async function main(): Promise<void> {
   const { handleMatchResponse } = await import("@/lib/matching/respond");
   const { getJobById } = await import("@/lib/jobs/lookup");
   const { getMechanicById } = await import("@/lib/mechanics/lookup");
+  const { getDriverById } = await import("@/lib/drivers/lookup");
   const { updateJobStatus } = await import("@/lib/jobs/update");
   const { parseSmsCommand } = await import("@/lib/sms/parse-command");
   const {
@@ -392,12 +413,19 @@ async function main(): Promise<void> {
     await prepareMechanics();
     const jobId = await seedJob(driverId);
     await beginMatching(jobId);
+    clearSmsLog();
     const result = await handleMatchResponse(jobId, tier1MechId, "ACCEPT");
     const job = await getJobById(jobId);
     const mechanic = await getMechanicById(tier1MechId);
+    const driver = await getDriverById(driverId);
     assert(result.action === "accepted", "action accepted");
     assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "status");
     assert(mechanic.fields.availability_status === "busy", "mechanic busy");
+    assertMatchAcceptedMechanicSms(
+      mechanic.fields.phone_number!,
+      driver.fields.phone_number!,
+      jobId,
+    );
   });
 
   await trackResult("Tier 1: ACCEPT without setup payment succeeds", async () => {
@@ -430,11 +458,19 @@ async function main(): Promise<void> {
     const jobId = await seedJob(driverId);
     await beginMatching(jobId);
     await handleMatchResponse(jobId, tier1MechId, "DECLINE");
+    clearSmsLog();
     const first = await handleMatchResponse(jobId, tier2MechA, "YES");
     const job = await getJobById(jobId);
+    const mechanic = await getMechanicById(tier2MechA);
+    const driver = await getDriverById(driverId);
     assert(first.action === "accepted", "first accepted");
     assert(job.fields.status === JOB_STATUS.accepted_by_mechanic, "status");
     assert(job.fields.mechanic_id?.[0] === tier2MechA, "winner linked");
+    assertMatchAcceptedMechanicSms(
+      mechanic.fields.phone_number!,
+      driver.fields.phone_number!,
+      jobId,
+    );
   });
 
   await trackResult("Tier 2: second YES → already_assigned", async () => {

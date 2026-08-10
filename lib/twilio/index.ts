@@ -23,6 +23,7 @@ export {
   applicationReceived,
   approved,
   matchAcceptedDriver,
+  matchAcceptedMechanic,
   matchAlreadyAssigned,
   mechanicHasActiveJob,
   needsMoreInfo,

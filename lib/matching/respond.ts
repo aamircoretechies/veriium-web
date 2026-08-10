@@ -1,3 +1,4 @@
+import { buildSignedMechanicJobUrl } from "@/lib/auth/signed-url";
 import { getDriverById } from "@/lib/drivers/lookup";
 import { findCommittedJobForMechanic } from "@/lib/jobs/lookup";
 import { InvalidJobTransitionError } from "@/lib/jobs/transitions";
@@ -8,12 +9,14 @@ import { getMechanicById } from "@/lib/mechanics/lookup";
 import { sendSms } from "@/lib/twilio/sms";
 import {
   matchAcceptedDriver,
+  matchAcceptedMechanic,
   matchAlreadyAssigned,
   mechanicHasActiveJob,
 } from "@/lib/twilio/templates";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { JobFields } from "@/types/airtable/jobs";
 import { escalateToTier } from "./escalate";
+import { buildJobSmsContext } from "./job-context";
 import {
   AlreadyAssignedError,
   InvalidMatchResponseError,
@@ -35,6 +38,44 @@ export type MatchResponseResult = {
     | "has_active_job";
 };
 
+async function notifyMechanicAccepted(
+  job: AirtableRecord<JobFields>,
+  mechanicId: string,
+): Promise<void> {
+  const driverId = job.fields.driver_id?.[0];
+  if (!driverId) return;
+
+  try {
+    const [mechanic, driver] = await Promise.all([
+      getMechanicById(mechanicId),
+      getDriverById(driverId),
+    ]);
+
+    if (!mechanic.fields.phone_number || !driver.fields.phone_number) {
+      return;
+    }
+
+    const smsContext = buildJobSmsContext(job);
+    const jobUrl = await buildSignedMechanicJobUrl(job.id);
+
+    await sendSms(
+      mechanic.fields.phone_number,
+      matchAcceptedMechanic({
+        vehicleLabel: smsContext.vehicleLabel,
+        zipCode: smsContext.zipCode,
+        serviceTypeLabel: smsContext.serviceTypeLabel,
+        driverPhone: driver.fields.phone_number,
+        jobUrl,
+      }),
+    );
+  } catch (error) {
+    console.error(
+      `[matching/respond] Failed to notify mechanic ${mechanicId} for job ${job.id}:`,
+      error,
+    );
+  }
+}
+
 async function notifyDriverAccepted(
   job: AirtableRecord<JobFields>,
 ): Promise<void> {
@@ -52,6 +93,14 @@ async function notifyDriverAccepted(
       error,
     );
   }
+}
+
+async function onJobAccepted(
+  job: AirtableRecord<JobFields>,
+  mechanicId: string,
+): Promise<void> {
+  await notifyDriverAccepted(job);
+  await notifyMechanicAccepted(job, mechanicId);
 }
 
 function mechanicLinkedToJob(
@@ -96,7 +145,7 @@ async function acceptTier1Assignment(
     status: JOB_STATUS.accepted_by_mechanic,
   });
   await markMechanicBusy(mechanicId);
-  await notifyDriverAccepted(updated);
+  await onJobAccepted(updated, mechanicId);
 
   return {
     jobId: job.id,
@@ -155,7 +204,7 @@ async function acceptBroadcast(
       mechanic_id: [mechanicId],
     });
     await markMechanicBusy(mechanicId);
-    await notifyDriverAccepted(updated);
+    await onJobAccepted(updated, mechanicId);
 
     return {
       jobId: job.id,

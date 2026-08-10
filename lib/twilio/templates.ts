@@ -91,6 +91,29 @@ export function matchAcceptedDriver(): string {
   return "Veriium: Great news — a mechanic accepted your job! They'll be in touch shortly with next steps.";
 }
 
+type MatchAcceptedMechanicDetails = {
+  vehicleLabel?: string;
+  zipCode: string;
+  serviceTypeLabel?: string;
+  driverPhone: string;
+  jobUrl: string;
+};
+
+/** §6.2 — Mechanic confirmation after ACCEPT/YES with job details and signed URL. */
+export function matchAcceptedMechanic(
+  details: MatchAcceptedMechanicDetails,
+): string {
+  const jobLine = [
+    details.vehicleLabel,
+    details.serviceTypeLabel,
+    `ZIP ${details.zipCode}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return `Veriium: Job confirmed — ${jobLine}. Driver: ${details.driverPhone}. Reply ENROUTE when heading out. View job: ${details.jobUrl}`;
+}
+
 /** Sent when a mechanic replies YES after the job is already assigned. */
 export function matchAlreadyAssigned(): string {
   return "Veriium: This job was already claimed by another mechanic. Thanks for responding!";
