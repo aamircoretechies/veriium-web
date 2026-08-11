@@ -1,3 +1,4 @@
+import { formatCurrency } from "@/lib/bookings/driver-job-status";
 import { getAirtableClient } from "@/lib/airtable";
 import { eq, or } from "@/lib/airtable/formula";
 import {
@@ -20,6 +21,7 @@ import { mechanicLinkedToJob } from "@/lib/service/guards";
 import type {
   MechanicJobListItem,
   MechanicJobListStatus,
+  MechanicJobsEarnings,
   MechanicJobsResponse,
 } from "@/types/api/mechanic-jobs";
 import type { MechanicJobView } from "@/types/api/mechanic-job-view";
@@ -111,7 +113,7 @@ export async function mapJobToListItem(
   const driver = await resolveDriverForJobCached(job, driverCache);
   const scheduling = buildJobSchedulingFields(job);
 
-  return {
+  const item: MechanicJobListItem = {
     jobId: job.id,
     listStatus,
     status,
@@ -127,6 +129,36 @@ export async function mapJobToListItem(
     zipCode: scheduling.zipCode,
     serviceTypeLabel: scheduling.serviceTypeLabel,
     scheduledTimeLabel: scheduling.scheduledTimeLabel,
+  };
+
+  if (listStatus === "completed") {
+    const payout = job.fields.mechanic_payout;
+    if (typeof payout === "number" && payout >= 0) {
+      item.mechanicPayout = payout;
+      item.mechanicPayoutLabel = formatCurrency(payout);
+    }
+  }
+
+  return item;
+}
+
+function computeMechanicEarnings(
+  completed: MechanicJobListItem[],
+): MechanicJobsEarnings {
+  let totalPayout = 0;
+  let completedJobCount = 0;
+
+  for (const job of completed) {
+    if (job.mechanicPayout !== undefined) {
+      totalPayout += job.mechanicPayout;
+      completedJobCount += 1;
+    }
+  }
+
+  return {
+    totalPayout,
+    formattedTotal: formatCurrency(totalPayout) ?? "$0.00",
+    completedJobCount,
   };
 }
 
@@ -164,5 +196,9 @@ export async function listMechanicDashboardJobs(
     }
   }
 
-  return { active, completed };
+  return {
+    active,
+    completed,
+    earnings: computeMechanicEarnings(completed),
+  };
 }

@@ -37,12 +37,9 @@ export const mechanicAuthSummarySchema = z.object({
   availabilityOn: z.boolean(),
 });
 
-export const mechanicMeResponseSchema = z.object({
-  mechanic: mechanicAuthSummarySchema,
-});
-
 export type MechanicAuthSummaryResponse = z.infer<typeof mechanicAuthSummarySchema>;
-export type MechanicMeResponse = z.infer<typeof mechanicMeResponseSchema>;
+
+export { mechanicMeResponseSchema, type MechanicMeResponse } from "@/types/api/mechanic-dashboard";
 
 export const setMechanicAvailabilityResponseSchema = z.object({
   mechanicId: z.string(),

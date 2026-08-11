@@ -5,6 +5,10 @@ import {
   toMechanicAuthSummary,
 } from "@/lib/auth/mechanic-otp";
 import {
+  toMechanicDashboardProfile,
+  toMechanicDashboardServiceSetup,
+} from "@/lib/mechanics/dashboard-profile";
+import {
   InvalidMechanicSessionError,
   requireMechanicSession,
 } from "@/lib/auth/mechanic-session";
@@ -35,7 +39,11 @@ export async function GET(request: Request) {
       );
     }
 
-    return jsonOk({ mechanic: toMechanicAuthSummary(record) });
+    return jsonOk({
+      mechanic: toMechanicAuthSummary(record),
+      profile: toMechanicDashboardProfile(record),
+      serviceSetup: toMechanicDashboardServiceSetup(record),
+    });
   } catch (error) {
     if (error instanceof AirtableError && error.status === 404) {
       return jsonError(404, "mechanic_not_found", "Mechanic account not found.");

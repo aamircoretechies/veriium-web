@@ -108,4 +108,20 @@ describe("mapJobToListItem", () => {
     assert.equal(item.listStatus, "active");
     assert.equal(item.jobId, "recJOB123");
   });
+
+  it("includes mechanic payout fields on completed jobs", async () => {
+    const driverCache = new Map<string, MechanicJobView["driver"]>();
+    const item = await mapJobToListItem(
+      makeJob({
+        status: JOB_STATUS.confirmed,
+        mechanic_payout: 195.5,
+        completed_at: "2026-08-16T18:00:00.000Z",
+      }),
+      "completed",
+      driverCache,
+    );
+
+    assert.equal(item.mechanicPayout, 195.5);
+    assert.equal(item.mechanicPayoutLabel, "$195.50");
+  });
 });

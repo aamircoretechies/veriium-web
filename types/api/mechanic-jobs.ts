@@ -21,13 +21,23 @@ export const mechanicJobListItemSchema = z.object({
   zipCode: z.string().nullable(),
   serviceTypeLabel: z.string().optional(),
   scheduledTimeLabel: z.string().optional(),
+  mechanicPayout: z.number().nonnegative().optional(),
+  mechanicPayoutLabel: z.string().optional(),
+});
+
+export const mechanicJobsEarningsSchema = z.object({
+  totalPayout: z.number(),
+  formattedTotal: z.string(),
+  completedJobCount: z.number().int().nonnegative(),
 });
 
 export const mechanicJobsResponseSchema = z.object({
   active: z.array(mechanicJobListItemSchema),
   completed: z.array(mechanicJobListItemSchema),
+  earnings: mechanicJobsEarningsSchema,
 });
 
 export type MechanicJobListStatus = z.infer<typeof mechanicJobListStatusSchema>;
 export type MechanicJobListItem = z.infer<typeof mechanicJobListItemSchema>;
+export type MechanicJobsEarnings = z.infer<typeof mechanicJobsEarningsSchema>;
 export type MechanicJobsResponse = z.infer<typeof mechanicJobsResponseSchema>;
