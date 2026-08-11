@@ -24,11 +24,11 @@ function buildMechanicJobViewFromRecord(
   job: AirtableRecord<JobFields>,
   driver: MechanicJobView["driver"],
 ): MechanicJobView {
-  const smsContext = buildJobSmsContext(job);
   const details = parseQuoteDetails(job.fields.quote_details);
   const receiptUrl = job.fields.attachments?.[0]?.url ?? null;
   const scheduledTime = job.fields.scheduled_time;
   const status = jobStatusOr(job.fields.status);
+  const scheduling = buildJobSchedulingFields(job);
 
   return {
     jobId: job.id,
@@ -39,13 +39,11 @@ function buildMechanicJobViewFromRecord(
       make: job.fields.vehicle_make ?? null,
       model: job.fields.vehicle_model ?? null,
     },
-    zipCode: job.fields.zip_code ?? null,
+    zipCode: scheduling.zipCode,
     serviceType: job.fields.service_type,
-    serviceTypeLabel: smsContext.serviceTypeLabel,
+    serviceTypeLabel: scheduling.serviceTypeLabel,
     scheduledTime,
-    scheduledTimeLabel: scheduledTime
-      ? formatScheduledTimeForDisplay(scheduledTime)
-      : undefined,
+    scheduledTimeLabel: scheduling.scheduledTimeLabel,
     issueText: job.fields.issue_text,
     diagnosisSummary: job.fields.diagnosis_summary,
     driver,
@@ -58,7 +56,23 @@ function buildMechanicJobViewFromRecord(
   };
 }
 
-async function resolveDriverForJob(
+export function buildJobSchedulingFields(job: AirtableRecord<JobFields>): {
+  zipCode: string | null;
+  serviceTypeLabel: string | undefined;
+  scheduledTimeLabel: string | undefined;
+} {
+  const smsContext = buildJobSmsContext(job);
+  const scheduledTime = job.fields.scheduled_time;
+  return {
+    zipCode: job.fields.zip_code ?? null,
+    serviceTypeLabel: smsContext.serviceTypeLabel,
+    scheduledTimeLabel: scheduledTime
+      ? formatScheduledTimeForDisplay(scheduledTime)
+      : undefined,
+  };
+}
+
+export async function resolveDriverForJob(
   job: AirtableRecord<JobFields>,
 ): Promise<MechanicJobView["driver"]> {
   const driverId = job.fields.driver_id?.[0];

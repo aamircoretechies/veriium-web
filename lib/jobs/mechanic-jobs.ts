@@ -1,6 +1,5 @@
 import { getAirtableClient } from "@/lib/airtable";
 import { eq, or } from "@/lib/airtable/formula";
-import { getDriverById } from "@/lib/drivers/lookup";
 import {
   formatActiveCost,
   formatActiveDateValue,
@@ -11,6 +10,10 @@ import {
   formatMechanicJobStatusLabel,
   formatVehicleLabel,
 } from "@/lib/jobs/mechanic-job-format";
+import {
+  buildJobSchedulingFields,
+  resolveDriverForJob,
+} from "@/lib/jobs/mechanic-view";
 import { JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
 import { ACTIVE_SERVICE_STATUSES } from "@/lib/jobs/transitions";
 import { mechanicLinkedToJob } from "@/lib/service/guards";
@@ -19,6 +22,7 @@ import type {
   MechanicJobListStatus,
   MechanicJobsResponse,
 } from "@/types/api/mechanic-jobs";
+import type { MechanicJobView } from "@/types/api/mechanic-job-view";
 import type { AirtableRecord } from "@/types/airtable/common";
 import { FIELDS } from "@/types/airtable/generated/fields";
 import type { JobsStatus } from "@/types/airtable/generated/enums";
@@ -66,13 +70,13 @@ function buildStatusFilterFormula(): string {
   );
 }
 
-async function resolveCustomerName(
+async function resolveDriverForJobCached(
   job: AirtableRecord<JobFields>,
-  driverCache: Map<string, string>,
-): Promise<string> {
+  driverCache: Map<string, MechanicJobView["driver"]>,
+): Promise<MechanicJobView["driver"]> {
   const driverId = job.fields.driver_id?.[0];
   if (!driverId) {
-    return "Customer";
+    return resolveDriverForJob(job);
   }
 
   const cached = driverCache.get(driverId);
@@ -80,20 +84,15 @@ async function resolveCustomerName(
     return cached;
   }
 
-  try {
-    const driver = await getDriverById(driverId);
-    const displayName = formatCustomerDisplayName(driver.fields.name);
-    driverCache.set(driverId, displayName);
-    return displayName;
-  } catch {
-    return "Customer";
-  }
+  const driver = await resolveDriverForJob(job);
+  driverCache.set(driverId, driver);
+  return driver;
 }
 
-async function mapJobToListItem(
+export async function mapJobToListItem(
   job: AirtableRecord<JobFields>,
   listStatus: MechanicJobListStatus,
-  driverCache: Map<string, string>,
+  driverCache: Map<string, MechanicJobView["driver"]>,
 ): Promise<MechanicJobListItem> {
   const status = jobStatusOr(job.fields.status);
   const cost =
@@ -109,18 +108,25 @@ async function mapJobToListItem(
           job.fields.completed_at ?? job.fields.scheduled_time,
         );
 
+  const driver = await resolveDriverForJobCached(job, driverCache);
+  const scheduling = buildJobSchedulingFields(job);
+
   return {
     jobId: job.id,
     listStatus,
     status,
     statusLabel: formatMechanicJobStatusLabel(status),
     title: formatJobTitle(job),
-    customerName: await resolveCustomerName(job, driverCache),
+    customerName: formatCustomerDisplayName(driver.name),
     vehicleLabel: formatVehicleLabel(job),
     dateLabel,
     dateValue,
     costLabel: cost.costLabel,
     costValue: cost.costValue,
+    driver,
+    zipCode: scheduling.zipCode,
+    serviceTypeLabel: scheduling.serviceTypeLabel,
+    scheduledTimeLabel: scheduling.scheduledTimeLabel,
   };
 }
 
@@ -138,7 +144,7 @@ export async function listMechanicDashboardJobs(
     mechanicLinkedToJob(job, mechanicId),
   );
 
-  const driverCache = new Map<string, string>();
+  const driverCache = new Map<string, MechanicJobView["driver"]>();
   const active: MechanicJobListItem[] = [];
   const completed: MechanicJobListItem[] = [];
 

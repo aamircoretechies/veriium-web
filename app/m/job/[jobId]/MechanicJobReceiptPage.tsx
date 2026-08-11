@@ -30,17 +30,21 @@ function InfoCard({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value?: string | null }) {
-  if (!value) {
-    return null;
-  }
-
+function DetailRow({
+  label,
+  value,
+  fallback = "—",
+}: {
+  label: string;
+  value?: string | null;
+  fallback?: string;
+}) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[12px] font-medium uppercase tracking-wide text-[#888]">
         {label}
       </span>
-      <span className="text-[15px] text-[#333]">{value}</span>
+      <span className="text-[15px] text-[#333]">{value ?? fallback}</span>
     </div>
   );
 }
@@ -137,14 +141,8 @@ export default function MechanicJobReceiptPage({
       </div>
 
       <div className="mb-6 flex flex-col gap-4">
-        <InfoCard title="Job details">
-          <DetailRow label="Service type" value={job.serviceTypeLabel} />
-          <DetailRow label="ZIP" value={job.zipCode} />
-          <DetailRow
-            label="Scheduled"
-            value={job.scheduledTimeLabel ?? "As soon as possible"}
-          />
-          {summaryText && (
+        {summaryText && (
+          <InfoCard title="Job details">
             <div className="flex flex-col gap-0.5">
               <span className="text-[12px] font-medium uppercase tracking-wide text-[#888]">
                 Issue
@@ -153,8 +151,8 @@ export default function MechanicJobReceiptPage({
                 {summaryText}
               </p>
             </div>
-          )}
-        </InfoCard>
+          </InfoCard>
+        )}
 
         <InfoCard title="Driver contact">
           <DetailRow label="Name" value={job.driver.name} />
@@ -170,8 +168,15 @@ export default function MechanicJobReceiptPage({
                 {job.driver.phone}
               </a>
             </div>
-          ) : null}
-          <DetailRow label="ZIP" value={job.driver.zip} />
+          ) : (
+            <DetailRow label="Phone" value={null} />
+          )}
+          <DetailRow label="ZIP" value={job.driver.zip ?? job.zipCode} />
+          <DetailRow label="Service type" value={job.serviceTypeLabel} />
+          <DetailRow
+            label="Scheduled"
+            value={job.scheduledTimeLabel ?? "As soon as possible"}
+          />
         </InfoCard>
       </div>
 

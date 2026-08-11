@@ -14,6 +14,10 @@ interface RepairItem {
   status: "In Progress" | "Completed";
   title: string;
   customerName: string;
+  driverPhone?: string;
+  zipCode: string | null;
+  serviceTypeLabel?: string;
+  scheduledTimeLabel?: string;
   vehicle: string;
   dateLabel: string;
   dateValue: string;
@@ -28,6 +32,10 @@ function toRepairItem(item: MechanicJobListItem): RepairItem {
     status: item.listStatus === "active" ? "In Progress" : "Completed",
     title: item.title,
     customerName: item.customerName,
+    driverPhone: item.driver.phone,
+    zipCode: item.zipCode,
+    serviceTypeLabel: item.serviceTypeLabel,
+    scheduledTimeLabel: item.scheduledTimeLabel,
     vehicle: item.vehicleLabel,
     dateLabel: item.dateLabel,
     dateValue: item.dateValue,
@@ -71,6 +79,33 @@ function RepairCard({ repair }: { repair: RepairItem }) {
 
             <p className="font-['Albert_Sans:Regular',sans-serif] font-normal text-[14px] text-black leading-[1.6]">
               Customer: <span className="font-['Albert_Sans:SemiBold',sans-serif] font-semibold underline cursor-pointer hover:text-[#e8854a] transition-colors duration-200">{repair.customerName}</span>
+            </p>
+
+            <p className="font-['Albert_Sans:Regular',sans-serif] font-normal text-[14px] text-black leading-[1.6]">
+              Phone:{" "}
+              {repair.driverPhone ? (
+                <a
+                  href={`tel:${repair.driverPhone}`}
+                  className="font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-[#e8854a] hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {repair.driverPhone}
+                </a>
+              ) : (
+                <span className="font-['Albert_Sans:SemiBold',sans-serif] font-semibold">—</span>
+              )}
+            </p>
+
+            <p className="font-['Albert_Sans:Regular',sans-serif] font-normal text-[14px] text-black leading-[1.6]">
+              ZIP: <span className="font-['Albert_Sans:SemiBold',sans-serif] font-semibold">{repair.zipCode ?? "—"}</span>
+            </p>
+
+            <p className="font-['Albert_Sans:Regular',sans-serif] font-normal text-[14px] text-black leading-[1.6]">
+              Service: <span className="font-['Albert_Sans:SemiBold',sans-serif] font-semibold">{repair.serviceTypeLabel ?? "—"}</span>
+            </p>
+
+            <p className="font-['Albert_Sans:Regular',sans-serif] font-normal text-[14px] text-black leading-[1.6]">
+              Scheduled: <span className="font-['Albert_Sans:SemiBold',sans-serif] font-semibold">{repair.scheduledTimeLabel ?? "As soon as possible"}</span>
             </p>
 
             <p className="font-['Albert_Sans:Regular',sans-serif] font-normal text-[14px] text-black leading-[1.6]">

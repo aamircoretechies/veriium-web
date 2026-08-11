@@ -1,8 +1,31 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { classifyMechanicJobListStatus } from "@/lib/jobs/mechanic-jobs";
+import { mapJobToListItem, classifyMechanicJobListStatus } from "@/lib/jobs/mechanic-jobs";
+import { buildJobSchedulingFields } from "@/lib/jobs/mechanic-view";
 import { JOB_STATUS } from "@/lib/jobs/status";
+import type { MechanicJobView } from "@/types/api/mechanic-job-view";
+import type { AirtableRecord } from "@/types/airtable/common";
+import type { JobFields } from "@/types/airtable/jobs";
+
+function makeJob(
+  overrides: Partial<JobFields> = {},
+): AirtableRecord<JobFields> {
+  return {
+    id: "recJOB123",
+    fields: {
+      status: JOB_STATUS.in_progress,
+      zip_code: "90210",
+      service_type: "mobile_repair",
+      scheduled_time: "2026-08-15T18:00:00.000Z",
+      vehicle_year: 2020,
+      vehicle_make: "Toyota",
+      vehicle_model: "Camry",
+      diagnosis_summary: "Brake issue",
+      ...overrides,
+    },
+  } as AirtableRecord<JobFields>;
+}
 
 describe("classifyMechanicJobListStatus", () => {
   it("classifies in-progress service statuses as active", () => {
@@ -51,5 +74,38 @@ describe("classifyMechanicJobListStatus", () => {
       classifyMechanicJobListStatus(JOB_STATUS.no_show_pending_review),
       null,
     );
+  });
+});
+
+describe("buildJobSchedulingFields", () => {
+  it("returns zip, service type label, and scheduled time label", () => {
+    const fields = buildJobSchedulingFields(makeJob());
+
+    assert.equal(fields.zipCode, "90210");
+    assert.equal(fields.serviceTypeLabel, "Mobile repair");
+    assert.match(fields.scheduledTimeLabel ?? "", /Aug/);
+  });
+
+  it("omits scheduled time label when not scheduled", () => {
+    const fields = buildJobSchedulingFields(
+      makeJob({ scheduled_time: undefined }),
+    );
+
+    assert.equal(fields.scheduledTimeLabel, undefined);
+  });
+});
+
+describe("mapJobToListItem", () => {
+  it("includes driver contact and scheduling fields without driver_id", async () => {
+    const driverCache = new Map<string, MechanicJobView["driver"]>();
+    const item = await mapJobToListItem(makeJob(), "active", driverCache);
+
+    assert.equal(item.customerName, "Customer");
+    assert.deepEqual(item.driver, { zip: "90210" });
+    assert.equal(item.zipCode, "90210");
+    assert.equal(item.serviceTypeLabel, "Mobile repair");
+    assert.match(item.scheduledTimeLabel ?? "", /Aug/);
+    assert.equal(item.listStatus, "active");
+    assert.equal(item.jobId, "recJOB123");
   });
 });

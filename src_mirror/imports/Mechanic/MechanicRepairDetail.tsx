@@ -286,15 +286,22 @@ export default function MechanicRepairDetail() {
                 )}
               </div>
               <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-gray-500">Vehicle</span>
-                <span className="font-medium">{formatVehicle(job)}</span>
+                <span className="text-gray-500">Scheduled</span>
+                <span className="font-medium">
+                  {job.scheduledTimeLabel ?? "As soon as possible"}
+                </span>
               </div>
               <div className="flex justify-between border-b border-gray-100 pb-2">
-                <span className="text-gray-500">Location</span>
-                <span className="font-medium">
-                  {job.zipCode ?? "—"}
-                  {job.serviceTypeLabel ? ` (${job.serviceTypeLabel})` : ""}
-                </span>
+                <span className="text-gray-500">ZIP</span>
+                <span className="font-medium">{job.zipCode ?? "—"}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-gray-500">Service</span>
+                <span className="font-medium">{job.serviceTypeLabel ?? "—"}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-gray-500">Vehicle</span>
+                <span className="font-medium">{formatVehicle(job)}</span>
               </div>
             </div>
           </div>
