@@ -260,6 +260,7 @@ export default function MechanicTopNav({ activeTab }: { activeTab?: "dashboard" 
           <NavPill
             label="My Repairs"
             active={activeTab === "my-repairs"}
+            onClick={() => router.push("/mechanic/repairs")}
           />
         </div>
 
@@ -279,6 +280,7 @@ export default function MechanicTopNav({ activeTab }: { activeTab?: "dashboard" 
         <NavPill
           label="My Repairs"
           active={activeTab === "my-repairs"}
+          onClick={() => router.push("/mechanic/repairs")}
         />
       </div>
     </div>

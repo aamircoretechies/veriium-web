@@ -152,7 +152,7 @@ export default function MechanicRepairDetail() {
           {error ?? "Job not found."}
         </h1>
         <button
-          onClick={() => router.push("/mechanic")}
+          onClick={() => router.push("/mechanic/repairs")}
           className="text-[#e8854a] font-medium bg-transparent border-none cursor-pointer"
         >
           Back to Dashboard
@@ -172,7 +172,7 @@ export default function MechanicRepairDetail() {
 
         <div className="mt-[-16px] mb-[-16px]">
           <button
-            onClick={() => router.push("/mechanic")}
+            onClick={() => router.push("/mechanic/repairs")}
             className="flex items-center gap-2 text-gray-600 hover:text-black transition-colors font-['Albert_Sans:Medium',sans-serif] cursor-pointer bg-transparent border-none p-0"
           >
             <ArrowLeft className="w-5 h-5" />
