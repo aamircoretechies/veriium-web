@@ -86,11 +86,20 @@ function RepairCard({ repair }: { repair: RepairItem }) {
             </p>
           </div>
 
-          {repair.status === "In Progress" && (
+          {repair.status === "In Progress" ? (
             <div className="mt-[16px]">
               <button
                 onClick={() => router.push(`/mechanic/repair/${repair.id}`)}
                 className="bg-[#ffa270] content-stretch flex flex-col items-center justify-center overflow-clip py-[15px] px-[45px] relative rounded-[12px] shrink-0 cursor-pointer select-none transition-all duration-200 hover:brightness-110 hover:shadow-xl active:scale-95 font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-[14px] text-black border-none outline-none"
+              >
+                View Details
+              </button>
+            </div>
+          ) : (
+            <div className="mt-[16px]">
+              <button
+                onClick={() => router.push(`/mechanic/repair/${repair.id}`)}
+                className="bg-white content-stretch flex flex-col items-center justify-center overflow-clip py-[15px] px-[45px] relative rounded-[12px] shrink-0 cursor-pointer select-none transition-all duration-200 hover:bg-gray-50 active:scale-95 font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-[14px] text-black border border-[#D2D2D2] outline-none"
               >
                 View Details
               </button>

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { mechanicJobListStatusSchema } from "@/types/api/mechanic-jobs";
 import { jobStatusSchema, serviceTypeSchema } from "@/types/airtable/schemas";
 
 export const mechanicJobViewDriverSchema = z.object({
@@ -35,3 +36,23 @@ export const mechanicJobViewSchema = z.object({
 });
 
 export type MechanicJobView = z.infer<typeof mechanicJobViewSchema>;
+
+export const mechanicJobDetailSchema = mechanicJobViewSchema.extend({
+  title: z.string(),
+  customerName: z.string(),
+  estimatedCostRange: z.string().optional(),
+  dateLabel: z.string(),
+  dateValue: z.string(),
+  costLabel: z.string(),
+  costValue: z.string(),
+  listStatus: mechanicJobListStatusSchema,
+});
+
+export const mechanicJobDetailResponseSchema = z.object({
+  job: mechanicJobDetailSchema,
+});
+
+export type MechanicJobDetail = z.infer<typeof mechanicJobDetailSchema>;
+export type MechanicJobDetailResponse = z.infer<
+  typeof mechanicJobDetailResponseSchema
+>;
