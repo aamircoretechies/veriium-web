@@ -272,13 +272,16 @@ async function main(): Promise<void> {
       jobId,
       mechanicId,
       receiptUrl: "https://res.cloudinary.com/demo/image/upload/receipt.jpg",
+      receiptTotal: 80,
       source: "web",
     });
 
     assert(result.receiptStatus === "submitted", "submitted");
+    assert(result.receiptTotal === 80, "receiptTotal in result");
     const job = await getJobById(jobId);
     assert(job.fields.attachments?.[0]?.url?.includes("cloudinary"), "attachment set");
     assert(jobDetails(job.fields).receipt_status === "submitted", "receipt_status submitted");
+    assert(jobDetails(job.fields).receipt_total === 80, "receipt_total persisted");
   });
 
   console.log("\n3. Deadline worker skips when submitted:");
@@ -291,6 +294,7 @@ async function main(): Promise<void> {
       jobId,
       mechanicId,
       receiptUrl: "https://res.cloudinary.com/demo/image/upload/receipt2.jpg",
+      receiptTotal: 80,
       source: "web",
     });
 
@@ -359,6 +363,7 @@ async function main(): Promise<void> {
 
       const job = await getJobById(jobId);
       assert(jobDetails(job.fields).receipt_status === "submitted", "submitted via MMS");
+      assert(jobDetails(job.fields).receipt_total === undefined, "MMS does not set receipt_total");
     } finally {
       globalThis.fetch = originalFetch;
     }

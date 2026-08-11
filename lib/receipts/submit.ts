@@ -14,6 +14,7 @@ export type SubmitReceiptInput = {
   jobId: string;
   mechanicId: string;
   receiptUrl: string;
+  receiptTotal?: number;
   source: "mms" | "web";
 };
 
@@ -21,6 +22,7 @@ export type SubmitReceiptResult = {
   jobId: string;
   receiptStatus: "submitted";
   receiptUrl: string;
+  receiptTotal?: number;
   source: "mms" | "web";
 };
 
@@ -52,6 +54,9 @@ export async function submitReceipt(
   const current = parseQuoteDetails(job.fields.quote_details);
   const quoteDetails = mergeQuoteDetails(job.fields.quote_details, {
     receipt_status: "submitted",
+    ...(input.receiptTotal !== undefined
+      ? { receipt_total: input.receiptTotal }
+      : {}),
     ...(current.receipt_status !== "overdue"
       ? { parts_reimbursement_forfeited: false }
       : {}),
@@ -66,6 +71,9 @@ export async function submitReceipt(
     jobId: input.jobId,
     receiptStatus: "submitted",
     receiptUrl: input.receiptUrl,
+    ...(input.receiptTotal !== undefined
+      ? { receiptTotal: input.receiptTotal }
+      : {}),
     source: input.source,
   };
 }

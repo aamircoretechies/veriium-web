@@ -184,11 +184,6 @@ export default function MechanicJobReceiptPage({
         <h2 className="font-['Albert_Sans:Bold',sans-serif] text-lg font-bold">
           Parts receipt
         </h2>
-        {job.partsCost != null && job.partsCost > 0 && (
-          <p className="text-[14px] text-gray-500">
-            Quoted parts: ${job.partsCost.toFixed(2)}
-          </p>
-        )}
         {job.partsReimbursementForfeited && (
           <p className="text-[14px] font-medium text-red-700">
             Parts reimbursement flagged as forfeited pending admin review.
@@ -200,6 +195,7 @@ export default function MechanicJobReceiptPage({
         jobId={jobId}
         token={token}
         receiptStatus={job.receiptStatus}
+        quotedPartsCost={job.partsCost}
         onSubmitted={() => void loadJob()}
       />
     </main>

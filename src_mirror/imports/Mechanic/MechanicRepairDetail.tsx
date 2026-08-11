@@ -335,6 +335,7 @@ export default function MechanicRepairDetail() {
             <ReceiptUploadPanel
               jobId={repairId}
               receiptStatus={job.receiptStatus}
+              quotedPartsCost={job.partsCost}
               onSubmitted={() => void loadJob()}
             />
           </div>

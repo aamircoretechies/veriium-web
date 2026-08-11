@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { Upload } from "lucide-react";
 import { uploadToCloudinary } from "@/lib/cloudinary/upload";
 
@@ -10,19 +10,42 @@ export type ReceiptUploadPanelProps = {
   jobId: string;
   token?: string | null;
   receiptStatus?: string | null;
+  quotedPartsCost?: number | null;
   onSubmitted?: () => void;
 };
+
+function parseReceiptTotalInput(value: string): number | null {
+  const normalized = value.trim().replace(/^\$/, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
+}
 
 export default function ReceiptUploadPanel({
   jobId,
   token: tokenProp,
   receiptStatus,
+  quotedPartsCost,
   onSubmitted,
 }: ReceiptUploadPanelProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pasteUrl, setPasteUrl] = useState("");
+  const [receiptTotalInput, setReceiptTotalInput] = useState("");
+
+  const receiptTotal = useMemo(
+    () => parseReceiptTotalInput(receiptTotalInput),
+    [receiptTotalInput],
+  );
+  const receiptTotalValid = receiptTotal !== null;
 
   const cloudinaryConfigured = Boolean(
     process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME &&
@@ -36,7 +59,7 @@ export default function ReceiptUploadPanel({
     !receiptStatus;
 
   const submitReceiptUrl = useCallback(
-    async (receiptUrl: string) => {
+    async (receiptUrl: string, total: number) => {
       const url = new URL(`/api/jobs/${jobId}/receipt`, window.location.origin);
       if (tokenProp && !localStorage.getItem(TOKEN_KEY)) {
         url.searchParams.set("token", tokenProp);
@@ -56,7 +79,7 @@ export default function ReceiptUploadPanel({
       const res = await fetch(url.toString(), {
         method: "POST",
         headers,
-        body: JSON.stringify({ receiptUrl }),
+        body: JSON.stringify({ receiptUrl, receiptTotal: total }),
       });
 
       const data = (await res.json()) as {
@@ -76,12 +99,17 @@ export default function ReceiptUploadPanel({
         return;
       }
 
+      if (receiptTotal === null) {
+        setError("Enter a valid receipt total before uploading.");
+        return;
+      }
+
       setError(null);
       setUploading(true);
 
       try {
         const receiptUrl = await uploadToCloudinary(file);
-        await submitReceiptUrl(receiptUrl);
+        await submitReceiptUrl(receiptUrl, receiptTotal);
         setSuccess(true);
         onSubmitted?.();
       } catch (err) {
@@ -90,7 +118,7 @@ export default function ReceiptUploadPanel({
         setUploading(false);
       }
     },
-    [onSubmitted, submitReceiptUrl],
+    [onSubmitted, receiptTotal, submitReceiptUrl],
   );
 
   const handlePasteUrl = useCallback(
@@ -102,10 +130,15 @@ export default function ReceiptUploadPanel({
         return;
       }
 
+      if (receiptTotal === null) {
+        setError("Enter a valid receipt total before submitting.");
+        return;
+      }
+
       setError(null);
       setUploading(true);
       try {
-        await submitReceiptUrl(trimmed);
+        await submitReceiptUrl(trimmed, receiptTotal);
         setSuccess(true);
         onSubmitted?.();
       } catch (err) {
@@ -114,7 +147,7 @@ export default function ReceiptUploadPanel({
         setUploading(false);
       }
     },
-    [onSubmitted, pasteUrl, submitReceiptUrl],
+    [onSubmitted, pasteUrl, receiptTotal, submitReceiptUrl],
   );
 
   if (success || receiptStatus === "submitted") {
@@ -152,7 +185,41 @@ export default function ReceiptUploadPanel({
           </span>
         )}
       </p>
-      <label className="flex cursor-pointer flex-col items-center justify-center rounded-[8px] border-2 border-dashed border-gray-300 bg-white p-6 transition-colors hover:bg-gray-50">
+      {quotedPartsCost != null && quotedPartsCost > 0 && (
+        <p className="text-[14px] text-gray-500">
+          Quoted parts: ${quotedPartsCost.toFixed(2)}
+        </p>
+      )}
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor={`receipt-total-${jobId}`}
+          className="text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black"
+        >
+          Receipt total ($)
+        </label>
+        <input
+          id={`receipt-total-${jobId}`}
+          type="text"
+          inputMode="decimal"
+          value={receiptTotalInput}
+          onChange={(e) => setReceiptTotalInput(e.target.value)}
+          placeholder="e.g. 82.50"
+          disabled={uploading}
+          className="w-full rounded-[8px] border border-gray-300 px-3 py-2 text-[14px]"
+        />
+        {receiptTotalInput.trim() && !receiptTotalValid && (
+          <p className="text-[13px] text-red-600">
+            Enter a valid dollar amount (0 or greater).
+          </p>
+        )}
+      </div>
+      <label
+        className={`flex flex-col items-center justify-center rounded-[8px] border-2 border-dashed border-gray-300 bg-white p-6 transition-colors ${
+          receiptTotalValid && !uploading
+            ? "cursor-pointer hover:bg-gray-50"
+            : "cursor-not-allowed opacity-60"
+        }`}
+      >
         <Upload className="mb-2 h-8 w-8 text-gray-400" />
         <span className="text-[14px] font-medium text-gray-600">
           {uploading ? "Uploading…" : "Click to upload receipt photo"}
@@ -162,7 +229,7 @@ export default function ReceiptUploadPanel({
           type="file"
           accept="image/*,application/pdf"
           className="hidden"
-          disabled={uploading}
+          disabled={uploading || !receiptTotalValid}
           onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
         />
       </label>
@@ -181,7 +248,7 @@ export default function ReceiptUploadPanel({
           />
           <button
             type="submit"
-            disabled={uploading || !pasteUrl.trim()}
+            disabled={uploading || !pasteUrl.trim() || !receiptTotalValid}
             className="shrink-0 rounded-[8px] bg-[#ffa270] px-4 py-2 text-[14px] font-semibold text-black disabled:opacity-50"
           >
             Submit

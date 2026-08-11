@@ -587,14 +587,8 @@ async function main(): Promise<void> {
       jobId,
       mechanicId,
       receiptUrl: "https://res.cloudinary.com/veriium-test/receipt.jpg",
+      receiptTotal,
       source: "web",
-    });
-    const job = await getJobById(jobId);
-    await client.updateRecord("jobs", jobId, {
-      quote_details: stringifyQuoteDetails({
-        ...parseQuoteDetails(job.fields.quote_details),
-        receipt_total: receiptTotal,
-      }),
     });
   }
 

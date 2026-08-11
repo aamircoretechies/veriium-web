@@ -12,12 +12,10 @@ import {
   ReceiptAlreadySubmittedError,
   ReceiptNotEligibleError,
 } from "@/lib/receipts/errors";
+import { jobRequiresReceipt } from "@/lib/receipts/eligibility";
 import { submitReceipt } from "@/lib/receipts/submit";
 import { assertMechanicAssigned } from "@/lib/service/guards";
-
-const submitReceiptBodySchema = z.object({
-  receiptUrl: z.string().url(),
-});
+import { submitReceiptBodySchema } from "@/types/api/receipt";
 
 type RouteContext = { params: Promise<{ jobId: string }> };
 
@@ -54,6 +52,7 @@ export async function GET(request: Request, context: RouteContext) {
       onHand: job.fields.quote_parts_on_hand ?? false,
       receiptUrl,
       receiptStatus: details.receipt_status ?? null,
+      receiptTotal: details.receipt_total ?? null,
       receiptSubmittedAt: null,
       partsReimbursementForfeited: details.parts_reimbursement_forfeited ?? false,
       vehicle: {
@@ -111,10 +110,25 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
+    const job = await getJobById(jobId);
+    assertMechanicAssigned(job, mechanicId);
+
+    if (
+      jobRequiresReceipt(job.fields) &&
+      parsed.data.receiptTotal === undefined
+    ) {
+      return jsonError(
+        400,
+        "validation_error",
+        "receiptTotal is required when parts reimbursement applies.",
+      );
+    }
+
     const result = await submitReceipt({
       jobId,
       mechanicId,
       receiptUrl: parsed.data.receiptUrl,
+      receiptTotal: parsed.data.receiptTotal,
       source: "web",
     });
     return jsonOk(result);
