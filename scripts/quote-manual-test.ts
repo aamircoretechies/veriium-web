@@ -239,6 +239,20 @@ function getSmsLog(): SendSmsResult[] {
   );
 }
 
+function assertMechanicReceiptSms(mechanicPhone: string, jobId: string): void {
+  const smsLog = getSmsLog();
+  assert(
+    smsLog.some(
+      (row) =>
+        row.to === mechanicPhone &&
+        row.body.includes("receipt") &&
+        row.body.includes(`/m/job/${jobId}`) &&
+        row.body.includes("token="),
+    ),
+    "mechanic receipt upload SMS with signed job URL",
+  );
+}
+
 async function main(): Promise<void> {
   loadEnvFile();
   clearSmsLog();
@@ -366,6 +380,7 @@ async function main(): Promise<void> {
     clearSmsLog();
     const driverId = await seedDriver("02");
     const mechanicId = await seedMechanic("02");
+    const mechanicPhone = `+1555091${"02".padStart(4, "0")}`;
     const jobId = await prepareDiagnosingJob(driverId, mechanicId);
 
     await handleServiceCommand(
@@ -380,8 +395,9 @@ async function main(): Promise<void> {
     const job = await getJobById(jobId);
     assertQuoteSubmitted(job);
     assert(Boolean(jobDetails(job.fields).quote_timeout_qstash_id), "timeout scheduled");
-    assert(getSmsLog().length === 1, "driver quote SMS sent");
-    assert(getSmsLog()[0]?.body.includes("APPROVE"), "quote SMS body");
+    assert(getSmsLog().length === 2, "driver + mechanic quote SMS sent");
+    assert(getSmsLog().some((m) => m.body.includes("APPROVE")), "driver quote SMS body");
+    assertMechanicReceiptSms(mechanicPhone, jobId);
   });
 
   console.log("\n3. Normal quote (≤ $500 parts):");
@@ -389,6 +405,7 @@ async function main(): Promise<void> {
     clearSmsLog();
     const driverId = await seedDriver("03");
     const mechanicId = await seedMechanic("03");
+    const mechanicPhone = `+1555091${"03".padStart(4, "0")}`;
     const jobId = await prepareDiagnosingJob(driverId, mechanicId);
 
     const result = await handleServiceCommand(
@@ -401,7 +418,8 @@ async function main(): Promise<void> {
     const job = await getJobById(jobId);
     assertQuoteSubmitted(job);
     assert(Boolean(jobDetails(job.fields).quote_timeout_qstash_id), "timeout scheduled");
-    assert(getSmsLog().length === 1, "driver SMS");
+    assert(getSmsLog().length === 2, "driver + mechanic SMS");
+    assertMechanicReceiptSms(mechanicPhone, jobId);
   });
 
   console.log("\n4. Timeout auto-decline:");

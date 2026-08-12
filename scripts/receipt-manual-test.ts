@@ -36,6 +36,13 @@ type TestResult = {
   detail?: string;
 };
 
+type SendSmsResult = {
+  sid: string;
+  status: string;
+  to: string;
+  body: string;
+};
+
 const created = {
   drivers: [] as string[],
   mechanics: [] as string[],
@@ -151,8 +158,35 @@ async function trackResult(name: string, fn: () => Promise<void>): Promise<void>
   }
 }
 
+function clearSmsLog(): void {
+  (globalThis as { __manualTestSmsLog?: SendSmsResult[] }).__manualTestSmsLog =
+    [];
+}
+
+function getSmsLog(): SendSmsResult[] {
+  return (
+    (globalThis as { __manualTestSmsLog?: SendSmsResult[] }).__manualTestSmsLog ??
+    []
+  );
+}
+
+function assertMechanicReceiptSms(mechanicPhone: string, jobId: string): void {
+  const smsLog = getSmsLog();
+  assert(
+    smsLog.some(
+      (row) =>
+        row.to === mechanicPhone &&
+        row.body.includes("receipt") &&
+        row.body.includes(`/m/job/${jobId}`) &&
+        row.body.includes("token="),
+    ),
+    "mechanic receipt upload SMS with signed job URL",
+  );
+}
+
 async function main(): Promise<void> {
   loadEnvFile();
+  clearSmsLog();
 
   const useLiveAirtable =
     process.env.RECEIPT_MANUAL_TEST_MOCK !== "1" && (await probeAirtable());
@@ -249,9 +283,10 @@ async function main(): Promise<void> {
   console.log(`\n[receipt-manual-test] run=${RUN_ID}\n`);
 
   console.log("1. QUOTE schedules receipt deadline:");
-  await trackResult("quote sets receipt_status pending", async () => {
+  await trackResult("quote sets receipt_status pending + mechanic receipt SMS", async () => {
+    clearSmsLog();
     const driverId = await seedDriver("01");
-    const { id: mechanicId } = await seedMechanic("01");
+    const { id: mechanicId, phone: mechanicPhone } = await seedMechanic("01");
     const jobId = await prepareDiagnosingJob(driverId, mechanicId);
 
     await quoteJob(jobId, mechanicId);
@@ -259,6 +294,7 @@ async function main(): Promise<void> {
     const job = await getJobById(jobId);
     assert(jobDetails(job.fields).receipt_status === "pending", "receipt_status pending");
     assertQuoteSubmitted(job);
+    assertMechanicReceiptSms(mechanicPhone, jobId);
   });
 
   console.log("\n2. Web receipt submit:");

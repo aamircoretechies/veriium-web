@@ -162,6 +162,18 @@ export function serviceQuoteDriver(details: ServiceQuoteDetails): string {
   return `Veriium: Your quote is ready — labor $${details.quoteAmount.toFixed(2)}, parts $${details.partsCost.toFixed(2)} (total $${total.toFixed(2)}).${nonOemNote}${onHandNote} Reply APPROVE to accept or DECLINE to cancel.`;
 }
 
+type ServiceQuoteMechanicReceiptDetails = {
+  partsCost: number;
+  jobUrl: string;
+};
+
+/** Exhibit A §5.3 — Mechanic receipt upload link after QUOTE when parts reimbursement applies. */
+export function serviceQuoteMechanicReceipt(
+  details: ServiceQuoteMechanicReceiptDetails,
+): string {
+  return `Veriium: Upload your parts receipt within 24 hours (quoted parts $${details.partsCost.toFixed(2)}). Enter the receipt total when uploading. Upload: ${details.jobUrl}`;
+}
+
 /** Exhibit A §5.8 — Driver consent for non-OEM or used parts. */
 export function partsConsentDriver(description?: string): string {
   const detailNote = description

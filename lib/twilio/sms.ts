@@ -38,6 +38,7 @@ export async function sendSms(
     process.env.MATCHING_MANUAL_TEST === "1" ||
     process.env.QUOTE_MANUAL_TEST === "1" ||
     process.env.REQUOTE_MANUAL_TEST === "1" ||
+    process.env.RECEIPT_MANUAL_TEST === "1" ||
     isSmsMock()
   ) {
     return mockSmsResult(to, body);

@@ -180,16 +180,11 @@ export default function MechanicJobReceiptPage({
         </InfoCard>
       </div>
 
-      <div className="mb-4 flex flex-col gap-2">
-        <h2 className="font-['Albert_Sans:Bold',sans-serif] text-lg font-bold">
-          Parts receipt
-        </h2>
-        {job.partsReimbursementForfeited && (
-          <p className="text-[14px] font-medium text-red-700">
-            Parts reimbursement flagged as forfeited pending admin review.
-          </p>
-        )}
-      </div>
+      {job.partsReimbursementForfeited && (
+        <p className="mb-4 text-[14px] font-medium text-red-700">
+          Parts reimbursement flagged as forfeited pending admin review.
+        </p>
+      )}
 
       <ReceiptUploadPanel
         jobId={jobId}
