@@ -109,6 +109,23 @@ describe("mapJobToListItem", () => {
     assert.equal(item.jobId, "recJOB123");
   });
 
+  it("labels requote-pending jobs", async () => {
+    const driverCache = new Map<string, MechanicJobView["driver"]>();
+    const item = await mapJobToListItem(
+      makeJob({
+        status: JOB_STATUS.awaiting_customer_approval,
+        quote_details: JSON.stringify({
+          requote: true,
+          requote_reason: "extra rotor",
+        }),
+      }),
+      "active",
+      driverCache,
+    );
+
+    assert.equal(item.statusLabel, "Requote Pending");
+  });
+
   it("includes mechanic payout fields on completed jobs", async () => {
     const driverCache = new Map<string, MechanicJobView["driver"]>();
     const item = await mapJobToListItem(

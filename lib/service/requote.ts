@@ -57,6 +57,7 @@ export async function handleRequote(
     quote_details: mergeQuoteDetails(job.fields.quote_details, {
       requote: true,
       requote_reason: parsed.reason,
+      original_parts_cost: previousPartsCost,
     }),
   });
 

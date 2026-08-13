@@ -343,6 +343,7 @@ async function main(): Promise<void> {
     const pending = await getJobById(jobId);
     assertRequoteSubmitted(pending);
     assert(pending.fields.parts_cost === 120, "pending parts_cost");
+    assert(jobDetails(pending.fields).original_parts_cost === 80, "original_parts_cost");
     assert(Boolean(jobDetails(pending.fields).requote_timeout_qstash_id), "timeout set");
     assert(getSmsLog().length === 1, "driver SMS");
     assert(getSmsLog()[0]?.body.includes("revised"), "requote SMS");

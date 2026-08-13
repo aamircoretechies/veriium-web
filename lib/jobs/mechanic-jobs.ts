@@ -19,7 +19,7 @@ import {
   buildJobSchedulingFields,
   resolveDriverForJob,
 } from "@/lib/jobs/mechanic-view";
-import { jobStatusOr } from "@/lib/jobs/status";
+import { isRequoteSubmitted, jobStatusOr } from "@/lib/jobs/status";
 import { mechanicLinkedToJob } from "@/lib/service/guards";
 import type {
   MechanicJobListItem,
@@ -90,7 +90,9 @@ export async function mapJobToListItem(
     jobId: job.id,
     listStatus,
     status,
-    statusLabel: formatMechanicJobStatusLabel(status),
+    statusLabel: formatMechanicJobStatusLabel(status, {
+      requotePending: isRequoteSubmitted(job),
+    }),
     title: formatJobTitle(job),
     customerName: formatCustomerDisplayName(driver.name),
     vehicleLabel: formatVehicleLabel(job),

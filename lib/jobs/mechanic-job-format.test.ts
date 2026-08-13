@@ -29,5 +29,15 @@ describe("mechanic-job-format", () => {
       formatMechanicJobStatusLabel(JOB_STATUS.matched_awaiting_payment),
       "Awaiting Payment",
     );
+    assert.equal(
+      formatMechanicJobStatusLabel(JOB_STATUS.awaiting_customer_approval),
+      "Awaiting Customer Approval",
+    );
+    assert.equal(
+      formatMechanicJobStatusLabel(JOB_STATUS.awaiting_customer_approval, {
+        requotePending: true,
+      }),
+      "Requote Pending",
+    );
   });
 });

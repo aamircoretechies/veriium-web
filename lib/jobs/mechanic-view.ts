@@ -1,3 +1,4 @@
+import { formatCurrency } from "@/lib/bookings/driver-job-status";
 import { formatScheduledTimeForDisplay } from "@/lib/bookings/scheduled-time";
 import { getDriverById } from "@/lib/drivers/lookup";
 import { getJobById } from "@/lib/jobs/lookup";
@@ -13,12 +14,70 @@ import {
 } from "@/lib/jobs/mechanic-job-format";
 import { classifyMechanicJobListStatus } from "@/lib/jobs/mechanic-dashboard-status";
 import { parseQuoteDetails } from "@/lib/jobs/quote-details";
-import { jobStatusOr } from "@/lib/jobs/status";
+import { isRequoteSubmitted, jobStatusOr } from "@/lib/jobs/status";
 import { buildJobSmsContext } from "@/lib/matching/job-context";
 import { assertMechanicAssigned } from "@/lib/service/guards";
 import type { MechanicJobDetail, MechanicJobView } from "@/types/api/mechanic-job-view";
 import type { AirtableRecord } from "@/types/airtable/common";
 import type { JobFields } from "@/types/airtable/jobs";
+
+type JobFieldsLike = JobFields | AirtableRecord<JobFields>;
+
+function resolveJobFields(job: JobFieldsLike): JobFields {
+  return "fields" in job ? job.fields : job;
+}
+
+function amountOrNull(value: number | undefined): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function amountLabel(value: number | null): string | null {
+  return value === null ? null : (formatCurrency(value) ?? null);
+}
+
+export function mapMechanicJobPayoutFields(job: JobFieldsLike): Pick<
+  MechanicJobView,
+  | "quoteTotal"
+  | "quoteTotalLabel"
+  | "partsCost"
+  | "partsCostLabel"
+  | "platformFee"
+  | "platformFeeLabel"
+  | "mechanicPayout"
+  | "mechanicPayoutLabel"
+  | "finalPrice"
+  | "finalPriceLabel"
+  | "requotePending"
+  | "requoteReason"
+  | "originalPartsCost"
+  | "originalPartsCostLabel"
+> {
+  const fields = resolveJobFields(job);
+  const details = parseQuoteDetails(fields.quote_details);
+  const quoteTotal = amountOrNull(fields.quote_total);
+  const partsCost = amountOrNull(fields.parts_cost);
+  const platformFee = amountOrNull(fields.platform_fee);
+  const mechanicPayout = amountOrNull(fields.mechanic_payout);
+  const finalPrice = amountOrNull(fields.final_price);
+  const originalPartsCost = amountOrNull(details.original_parts_cost);
+
+  return {
+    quoteTotal,
+    quoteTotalLabel: amountLabel(quoteTotal),
+    partsCost,
+    partsCostLabel: amountLabel(partsCost),
+    platformFee,
+    platformFeeLabel: amountLabel(platformFee),
+    mechanicPayout,
+    mechanicPayoutLabel: amountLabel(mechanicPayout),
+    finalPrice,
+    finalPriceLabel: amountLabel(finalPrice),
+    requotePending: isRequoteSubmitted(fields),
+    requoteReason: details.requote_reason?.trim() || null,
+    originalPartsCost,
+    originalPartsCostLabel: amountLabel(originalPartsCost),
+  };
+}
 
 function buildMechanicJobViewFromRecord(
   job: AirtableRecord<JobFields>,
@@ -29,11 +88,14 @@ function buildMechanicJobViewFromRecord(
   const scheduledTime = job.fields.scheduled_time;
   const status = jobStatusOr(job.fields.status);
   const scheduling = buildJobSchedulingFields(job);
+  const payout = mapMechanicJobPayoutFields(job);
 
   return {
     jobId: job.id,
     status,
-    statusLabel: formatMechanicJobStatusLabel(status),
+    statusLabel: formatMechanicJobStatusLabel(status, {
+      requotePending: payout.requotePending,
+    }),
     vehicle: {
       year: job.fields.vehicle_year ?? null,
       make: job.fields.vehicle_make ?? null,
@@ -47,7 +109,7 @@ function buildMechanicJobViewFromRecord(
     issueText: job.fields.issue_text,
     diagnosisSummary: job.fields.diagnosis_summary,
     driver,
-    partsCost: job.fields.parts_cost ?? null,
+    ...payout,
     onHand: job.fields.quote_parts_on_hand ?? false,
     receiptUrl,
     receiptStatus: details.receipt_status ?? null,

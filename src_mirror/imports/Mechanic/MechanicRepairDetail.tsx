@@ -20,6 +20,8 @@ const PROGRESS_STATUSES: readonly JobsStatus[] = [
   "arrived",
   "diagnosing",
   "quote_provided",
+  "awaiting_customer_approval",
+  "approved_parts_pickup",
   "in_progress",
   "completed_pending_confirmation",
   "confirmed",
@@ -48,8 +50,14 @@ function Badge({
   );
 }
 
-function StatusBadge({ label }: { label: string }) {
-  return <Badge variant="brand">{label}</Badge>;
+function StatusBadge({
+  label,
+  variant = "brand",
+}: {
+  label: string;
+  variant?: "neutral" | "success" | "warning" | "danger" | "brand";
+}) {
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
 function getProgressPercent(status: JobsStatus): number {
@@ -164,6 +172,11 @@ export default function MechanicRepairDetail() {
   const diagnosisText = job.diagnosisSummary ?? job.issueText;
   const progressPercent = getProgressPercent(job.status);
   const showProgress = job.listStatus === "active";
+  const showPayoutCard =
+    job.quoteTotal != null ||
+    job.partsCost != null ||
+    job.platformFee != null ||
+    job.mechanicPayout != null;
 
   return (
     <div className="bg-white flex flex-col relative w-full min-h-screen overflow-x-hidden font-['Albert_Sans:Regular',sans-serif]">
@@ -183,7 +196,10 @@ export default function MechanicRepairDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-[48px] items-start">
           <div className="flex flex-col gap-[16px]">
             <div className="flex items-center gap-3">
-              <StatusBadge label={job.statusLabel} />
+              <StatusBadge
+                label={job.statusLabel}
+                variant={job.requotePending ? "warning" : "brand"}
+              />
               {job.serviceTypeLabel && (
                 <Badge variant="neutral">{job.serviceTypeLabel}</Badge>
               )}
@@ -330,6 +346,61 @@ export default function MechanicRepairDetail() {
           </div>
         </div>
 
+        {job.requotePending && (
+          <div className="border border-yellow-300 bg-yellow-50 rounded-[12px] p-[24px] flex flex-col gap-2 mt-4">
+            <div className="flex items-center gap-2">
+              <Badge variant="warning">Requote Pending</Badge>
+              <h2 className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[18px] text-yellow-950">
+                Waiting for driver approval
+              </h2>
+            </div>
+            <p className="text-[14px] text-yellow-900">
+              Driver must reply APPROVE or DECLINE via SMS. Quote/requote
+              cannot be approved in this app.
+            </p>
+            {job.requoteReason && (
+              <p className="text-[14px] text-yellow-900">
+                Reason: {job.requoteReason}
+              </p>
+            )}
+            {(job.originalPartsCostLabel || job.partsCostLabel) && (
+              <p className="text-[14px] font-medium text-yellow-950">
+                Parts:{" "}
+                {job.originalPartsCostLabel
+                  ? `was ${job.originalPartsCostLabel}, now ${job.partsCostLabel ?? "—"}`
+                  : job.partsCostLabel}
+                {job.finalPriceLabel ? ` (new total ${job.finalPriceLabel})` : ""}
+              </p>
+            )}
+          </div>
+        )}
+
+        {showPayoutCard && (
+          <div className="border border-[#D2D2D2] rounded-[12px] p-[32px] flex flex-col gap-[20px] mt-4">
+            <h2 className="font-['Albert_Sans:Bold',sans-serif] font-bold text-[20px] text-black">
+              Quote &amp; payout
+            </h2>
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-gray-500">Labor quote</span>
+                <span className="font-medium">{job.quoteTotalLabel ?? "—"}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-gray-500">Parts</span>
+                <span className="font-medium">{job.partsCostLabel ?? "—"}</span>
+              </div>
+              <div className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-gray-500">Platform fee (15%)</span>
+                <span className="font-medium">{job.platformFeeLabel ?? "—"}</span>
+              </div>
+              <div className="flex justify-between pb-2">
+                <span className="text-gray-500">Your payout</span>
+                <span className="font-medium">{job.mechanicPayoutLabel ?? "—"}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {repairId && job.listStatus === "active" && (
           <div className="mt-4">
             <ReceiptUploadPanel
@@ -355,11 +426,17 @@ export default function MechanicRepairDetail() {
               </svg>
               Repair Completed
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mt-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-2">
               <div>
                 <p className="text-[13px] text-green-800 mb-1">{job.costLabel}</p>
                 <p className="font-bold text-[18px] text-green-950">
                   {job.costValue}
+                </p>
+              </div>
+              <div>
+                <p className="text-[13px] text-green-800 mb-1">Your payout</p>
+                <p className="font-bold text-[18px] text-green-950">
+                  {job.mechanicPayoutLabel ?? "—"}
                 </p>
               </div>
               <div>

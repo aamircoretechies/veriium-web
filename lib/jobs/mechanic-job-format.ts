@@ -30,7 +30,13 @@ const STATUS_LABELS: Record<string, string> = {
   refunded: "Refunded",
 };
 
-export function formatMechanicJobStatusLabel(status: JobsStatus): string {
+export function formatMechanicJobStatusLabel(
+  status: JobsStatus,
+  options?: { requotePending?: boolean },
+): string {
+  if (options?.requotePending) {
+    return "Requote Pending";
+  }
   return STATUS_LABELS[status] ?? status.replace(/_/g, " ");
 }
 
