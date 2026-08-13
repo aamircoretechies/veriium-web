@@ -472,6 +472,9 @@ async function main(): Promise<void> {
   const { reportNoShow } = await import("@/lib/no-show/report");
   const { approveNoShow } = await import("@/lib/no-show/approve");
   const { runDisputeRemind } = await import("@/lib/disputes/remind");
+  const { createReminderCronFailedActionItem } = await import(
+    "@/lib/action-items/create"
+  );
   const { updateJobStatus } = await import("@/lib/jobs/update");
   const { disputeJob } = await import("@/lib/disputes/dispute");
   const { refundJob } = await import("@/lib/disputes/refund");
@@ -1113,6 +1116,84 @@ async function main(): Promise<void> {
           ACTION_ITEM_TYPE.DRIVER_NON_RESPONSE_72H,
         )) === nonResponseCount,
         "no extra 72h items on replay",
+      );
+    },
+  );
+
+  await trackResult(
+    "reminder worker failure → Reminder cron failed action item",
+    async () => {
+      const driverId = await seedDriver("6b");
+      const mechanicId = await seedMechanic("6b");
+      const jobId = await seedJob(driverId, {
+        mechanic_id: [mechanicId],
+        status: JOB_STATUS.completed_pending_confirmation,
+      });
+
+      const innerClient = getAirtableClient();
+      let failOpenDisputeCreate = true;
+      setAirtableClientForTests({
+        listRecords: innerClient.listRecords.bind(innerClient),
+        getRecord: innerClient.getRecord.bind(innerClient),
+        updateRecord: innerClient.updateRecord.bind(innerClient),
+        async createRecord(table, fields, options) {
+          if (
+            failOpenDisputeCreate &&
+            table === "action-items" &&
+            (fields as { type?: string }).type === ACTION_ITEM_TYPE.OPEN_DISPUTE
+          ) {
+            failOpenDisputeCreate = false;
+            throw new Error("simulated airtable outage");
+          }
+          return innerClient.createRecord(table, fields, options);
+        },
+      });
+
+      try {
+        let threw = false;
+        try {
+          await runDisputeRemind(jobId, 24);
+        } catch (error) {
+          threw =
+            error instanceof Error &&
+            error.message === "simulated airtable outage";
+          if (!threw) {
+            throw error;
+          }
+        }
+        assert(threw, "runDisputeRemind rethrows unrecoverable failure");
+
+        assert(
+          (await countActionItemsForJob(
+            jobId,
+            ACTION_ITEM_TYPE.REMINDER_CRON_FAILED,
+          )) === 1,
+          "Reminder cron failed action item",
+        );
+
+        const afterFail = await getJobById(jobId);
+        assert(
+          !afterFail.fields.reminder_1_sent_at?.trim(),
+          "reminder_1_sent_at not stamped on failure",
+        );
+      } finally {
+        setAirtableClientForTests(innerClient);
+      }
+
+      const deduped = await createReminderCronFailedActionItem({
+        jobId,
+        reminder: 24,
+        error: new Error("simulated airtable outage"),
+        driver: [driverId],
+        mechanic: [mechanicId],
+      });
+      assert(deduped === null, "cron-failed item deduped");
+      assert(
+        (await countActionItemsForJob(
+          jobId,
+          ACTION_ITEM_TYPE.REMINDER_CRON_FAILED,
+        )) === 1,
+        "still one Reminder cron failed item",
       );
     },
   );

@@ -1,4 +1,5 @@
-import { getAirtableClient } from "@/lib/airtable";
+import { createReminderCronFailedActionItem } from "@/lib/action-items/create";
+import { AirtableError, getAirtableClient } from "@/lib/airtable";
 import { buildSignedJobUrl } from "@/lib/auth/signed-url";
 import { getDriverById } from "@/lib/drivers/lookup";
 import type { DisputeReminderHours } from "@/lib/edge/constants";
@@ -9,6 +10,7 @@ import { sendSms } from "@/lib/twilio/sms";
 import { disputeReminderDriver } from "@/lib/twilio/templates";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 import { ACTION_ITEM_TYPE, type ActionItemType } from "@/types/airtable/enums";
+import type { AirtableLinkedRecords } from "@/types/airtable/fields";
 import type { JobFields } from "@/types/airtable/jobs";
 import { createActionItemSchema } from "@/types/airtable/schemas";
 
@@ -79,62 +81,90 @@ export async function runDisputeRemind(
   jobId: string,
   reminder: DisputeReminderHours,
 ): Promise<DisputeRemindResult> {
-  const job = await getJobById(jobId);
+  let driverIds: AirtableLinkedRecords | undefined;
+  let mechanicIds: AirtableLinkedRecords | undefined;
 
-  if (job.fields.status !== JOB_STATUS.completed_pending_confirmation) {
-    return {
-      jobId,
-      reminder,
-      skipped: true,
-      reason: "status_not_pending_confirmation",
-    };
-  }
+  try {
+    const job = await getJobById(jobId);
+    driverIds = job.fields.driver_id;
+    mechanicIds = job.fields.mechanic_id;
 
-  if (isDisputeReminderAlreadySent(job.fields, reminder)) {
-    return {
-      jobId,
-      reminder,
-      skipped: true,
-      reason: "already_sent",
-    };
-  }
+    if (job.fields.status !== JOB_STATUS.completed_pending_confirmation) {
+      return {
+        jobId,
+        reminder,
+        skipped: true,
+        reason: "status_not_pending_confirmation",
+      };
+    }
 
-  const driverId = job.fields.driver_id?.[0];
-  if (driverId) {
-    try {
-      const driver = await getDriverById(driverId);
-      if (driver.fields.phone_number) {
-        const jobUrl = await buildSignedJobUrl(jobId);
-        await sendSms(
-          driver.fields.phone_number,
-          disputeReminderDriver(reminder, jobUrl),
+    if (isDisputeReminderAlreadySent(job.fields, reminder)) {
+      return {
+        jobId,
+        reminder,
+        skipped: true,
+        reason: "already_sent",
+      };
+    }
+
+    const driverId = job.fields.driver_id?.[0];
+    if (driverId) {
+      try {
+        const driver = await getDriverById(driverId);
+        if (driver.fields.phone_number) {
+          const jobUrl = await buildSignedJobUrl(jobId);
+          await sendSms(
+            driver.fields.phone_number,
+            disputeReminderDriver(reminder, jobUrl),
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[disputes/remind] Failed to SMS driver for job ${jobId}:`,
+          error,
         );
       }
-    } catch (error) {
-      console.error(
-        `[disputes/remind] Failed to SMS driver for job ${jobId}:`,
+    }
+
+    const actionItemFields = createActionItemSchema.parse({
+      type: REMINDER_ACTION_ITEM_TYPES[reminder],
+      status: "open",
+      description: `Dispute reminder — ${reminder}h\nDriver has not confirmed or disputed job ${jobId} after ${reminder} hours.`,
+      linked_job_id: [jobId],
+      linked_driver_id: job.fields.driver_id,
+      linked_mechanic_id: job.fields.mechanic_id,
+    });
+
+    const client = getAirtableClient();
+    await client.createRecord<ActionItemFields>("action-items", actionItemFields, {
+      typecast: true,
+    });
+
+    await updateJobStatus(jobId, {
+      [REMINDER_SENT_AT_FIELD[reminder]]: new Date().toISOString(),
+    });
+
+    return { jobId, reminder, action: "dispute_reminder_sent" };
+  } catch (error) {
+    if (error instanceof AirtableError && error.status === 404) {
+      throw error;
+    }
+
+    try {
+      await createReminderCronFailedActionItem({
+        jobId,
+        reminder,
         error,
+        driver: driverIds,
+        mechanic: mechanicIds,
+      });
+    } catch (actionError) {
+      console.error(
+        `[disputes/remind] Failed to create Reminder cron failed item for job ${jobId}:`,
+        actionError,
       );
     }
+
+    throw error;
   }
-
-  const actionItemFields = createActionItemSchema.parse({
-    type: REMINDER_ACTION_ITEM_TYPES[reminder],
-    status: "open",
-    description: `Dispute reminder — ${reminder}h\nDriver has not confirmed or disputed job ${jobId} after ${reminder} hours.`,
-    linked_job_id: [jobId],
-    linked_driver_id: job.fields.driver_id,
-    linked_mechanic_id: job.fields.mechanic_id,
-  });
-
-  const client = getAirtableClient();
-  await client.createRecord<ActionItemFields>("action-items", actionItemFields, {
-    typecast: true,
-  });
-
-  await updateJobStatus(jobId, {
-    [REMINDER_SENT_AT_FIELD[reminder]]: new Date().toISOString(),
-  });
-
-  return { jobId, reminder, action: "dispute_reminder_sent" };
 }

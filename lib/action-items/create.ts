@@ -1,6 +1,9 @@
 import { getAirtableClient } from "@/lib/airtable";
 import { and, eq } from "@/lib/airtable/formula";
-import { getStaleAvailabilitySeconds } from "@/lib/edge/constants";
+import {
+  getStaleAvailabilitySeconds,
+  type DisputeReminderHours,
+} from "@/lib/edge/constants";
 import { FIELDS } from "@/types/airtable/generated/fields";
 import type { ActionItemFields } from "@/types/airtable/action-items";
 import { ACTION_ITEM_TYPE, type ActionItemType } from "@/types/airtable/enums";
@@ -225,4 +228,42 @@ export async function createDiagnosticFeeRetryFailedActionItem(
     driver: input.driver,
     type: ACTION_ITEM_TYPE.FAILED_DIAGNOSTIC_FEE,
   });
+}
+
+export type CreateReminderCronFailedActionItemInput = {
+  jobId: string;
+  reminder: DisputeReminderHours;
+  error: unknown;
+  driver?: AirtableLinkedRecords;
+  mechanic?: AirtableLinkedRecords;
+};
+
+export async function createReminderCronFailedActionItem(
+  input: CreateReminderCronFailedActionItemInput,
+): Promise<string | null> {
+  const type = ACTION_ITEM_TYPE.REMINDER_CRON_FAILED;
+
+  if (await hasOpenActionItem(input.jobId, type)) {
+    return null;
+  }
+
+  const detail =
+    input.error instanceof Error ? input.error.message : String(input.error);
+  const actionItemFields = createActionItemSchema.parse({
+    type,
+    status: "open",
+    description: `Dispute reminder ${input.reminder}h failed for job ${input.jobId}.\n${detail}`,
+    linked_job_id: [input.jobId],
+    linked_driver_id: input.driver,
+    linked_mechanic_id: input.mechanic,
+  });
+
+  const client = getAirtableClient();
+  const record = await client.createRecord<ActionItemFields>(
+    "action-items",
+    actionItemFields,
+    { typecast: true },
+  );
+
+  return record.id;
 }
