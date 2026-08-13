@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Footer from "../../../app/components/Footer";
 import PublicHeader from "@/app/components/PublicHeader";
 import type {
@@ -128,7 +127,7 @@ function Badge({ label, variant = "default" }: { label: string; variant?: "defau
 
 // ─── Mechanic Card ────────────────────────────────────────────────────────────
 
-function MechanicCard({ mechanic, onBook }: { mechanic: MechanicListing; onBook: (id: string) => void }) {
+function MechanicCard({ mechanic }: { mechanic: MechanicListing }) {
   return (
     <article className="bg-white rounded-[16px] border border-[#ececec] p-5 flex flex-col gap-4 shadow-sm hover:shadow-md hover:-translate-y-[2px] transition-all duration-200">
       {/* Header row */}
@@ -169,20 +168,13 @@ function MechanicCard({ mechanic, onBook }: { mechanic: MechanicListing; onBook:
         ))}
       </div>
 
-      {/* Footer row */}
-      <div className="flex items-center justify-between pt-1 border-t border-[#f5f5f5]">
+      {/* Footer row — browse-only; booking uses automatic matching (§8 / W7-A) */}
+      <div className="flex items-center pt-1 border-t border-[#f5f5f5]">
         <div className="flex items-center gap-3 text-[13px] text-[#666] font-['Albert_Sans:Regular',sans-serif]">
           <span>{mechanic.yearsExperience} yrs exp</span>
           {mechanic.mobileAvailable && <span>· Mobile</span>}
           {mechanic.shopAvailable && <span>· Shop</span>}
         </div>
-        <button
-          onClick={() => onBook(mechanic.id)}
-          className="bg-[#ffa270] hover:bg-[#ff8f52] active:scale-95 text-black font-['Albert_Sans:Bold',sans-serif] font-bold text-[13px] px-4 py-[8px] rounded-[10px] transition-all duration-200 select-none cursor-pointer"
-          aria-label={`Book ${mechanic.name}`}
-        >
-          Book Now
-        </button>
       </div>
     </article>
   );
@@ -510,7 +502,6 @@ function EmptyState({ onReset }: { onReset: () => void }) {
 // ─── Main Page Component ──────────────────────────────────────────────────────
 
 export default function FindMechanic() {
-  const router = useRouter();
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [sort, setSort] = useState<MechanicSearchSort>("distance");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
@@ -583,22 +574,6 @@ export default function FindMechanic() {
       controller.abort();
     };
   }, [filters, sort, fetchKey]);
-
-  const handleBook = (mechanicId: string) => {
-    const zip = filters.zip || searchZip;
-    const params = new URLSearchParams({ mechanicId });
-    if (zip) {
-      params.set("zip", zip);
-    }
-
-    try {
-      sessionStorage.setItem("veriium:selectedMechanicId", mechanicId);
-    } catch {
-      // sessionStorage may be unavailable in private browsing
-    }
-
-    router.push(`/public?${params.toString()}`);
-  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -693,7 +668,7 @@ export default function FindMechanic() {
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {mechanics.map((m) => (
-                  <MechanicCard key={m.id} mechanic={m} onBook={handleBook} />
+                  <MechanicCard key={m.id} mechanic={m} />
                 ))}
               </div>
             )}
