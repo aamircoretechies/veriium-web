@@ -174,6 +174,8 @@ export const updateJobSchema = z
     attachments: z.array(airtableAttachmentUpdateSchema).optional(),
     completed_at: z.string().datetime().optional(),
     cancelled_at: z.string().datetime().optional(),
+    reminder_1_sent_at: z.string().datetime().optional(),
+    reminder_2_sent_at: z.string().datetime().optional(),
     escalated_at: z.string().datetime().optional(),
     no_show_marked_at: z.string().datetime().optional(),
     admin_resolved_at: z.string().datetime().optional(),

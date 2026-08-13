@@ -472,6 +472,7 @@ async function main(): Promise<void> {
   const { reportNoShow } = await import("@/lib/no-show/report");
   const { approveNoShow } = await import("@/lib/no-show/approve");
   const { runDisputeRemind } = await import("@/lib/disputes/remind");
+  const { updateJobStatus } = await import("@/lib/jobs/update");
   const { disputeJob } = await import("@/lib/disputes/dispute");
   const { refundJob } = await import("@/lib/disputes/refund");
   const { setMechanicAvailability } = await import(
@@ -1047,6 +1048,17 @@ async function main(): Promise<void> {
       const driver = await getDriverById(driverId);
       clearSmsLog();
 
+      // Matching Tier 4 leftover must not block the first 72h dispute reminder.
+      await updateJobStatus(jobId, {
+        escalated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      });
+
+      const reminderSentAtField = {
+        24: "reminder_1_sent_at",
+        48: "reminder_2_sent_at",
+        72: "escalated_at",
+      } as const;
+
       for (const reminder of [24, 48, 72] as const) {
         const result = await runDisputeRemind(jobId, reminder);
         assert(
@@ -1058,19 +1070,49 @@ async function main(): Promise<void> {
           jobId,
           reminder,
         );
+        const stamped = await getJobById(jobId);
+        const field = reminderSentAtField[reminder];
+        assert(
+          Boolean(stamped.fields[field]?.trim()),
+          `${field} stamped after ${reminder}h`,
+        );
+      }
+
+      const openDisputeCount = await countActionItemsForJob(
+        jobId,
+        ACTION_ITEM_TYPE.OPEN_DISPUTE,
+      );
+      const nonResponseCount = await countActionItemsForJob(
+        jobId,
+        ACTION_ITEM_TYPE.DRIVER_NON_RESPONSE_72H,
+      );
+      assert(openDisputeCount === 2, "24h+48h action items");
+      assert(nonResponseCount === 1, "72h action item");
+
+      const smsCountAfterSend = getSmsLog().length;
+      for (const reminder of [24, 48, 72] as const) {
+        const replay = await runDisputeRemind(jobId, reminder);
+        assert(
+          replay.skipped === true && replay.reason === "already_sent",
+          `reminder ${reminder}h replay skipped`,
+        );
       }
 
       assert(
-        (await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.OPEN_DISPUTE)) >= 1,
-        "24h action item",
+        getSmsLog().length === smsCountAfterSend,
+        "no extra reminder SMS on replay",
       );
       assert(
-        (await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.OPEN_DISPUTE)) >= 1,
-        "48h action item",
+        (await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.OPEN_DISPUTE)) ===
+          openDisputeCount,
+        "no extra open dispute items on replay",
       );
       assert(
-        (await countActionItemsForJob(jobId, ACTION_ITEM_TYPE.DRIVER_NON_RESPONSE_72H)) >= 1,
-        "72h action item",
+        (await countActionItemsForJob(
+          jobId,
+          ACTION_ITEM_TYPE.DRIVER_NON_RESPONSE_72H,
+        )) === nonResponseCount,
+        "no extra 72h items on replay",
       );
     },
   );
