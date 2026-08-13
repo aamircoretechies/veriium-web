@@ -12,6 +12,7 @@ function mechanicRecord(
 ): AirtableRecord<MechanicFields> {
   return {
     id: "rec-test",
+    createdTime: "2026-01-01T00:00:00.000Z",
     fields: {
       availability_status: availabilityStatus,
       availability_updated_at: availabilityUpdatedAt,

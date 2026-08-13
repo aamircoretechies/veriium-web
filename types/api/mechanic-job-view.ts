@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-import { mechanicJobListStatusSchema } from "@/types/api/mechanic-jobs";
 import { jobStatusSchema, serviceTypeSchema } from "@/types/airtable/schemas";
+
+export const mechanicJobListStatusSchema = z.enum(["active", "completed"]);
 
 export const mechanicJobViewDriverSchema = z.object({
   name: z.string().optional(),
@@ -35,6 +36,7 @@ export const mechanicJobViewSchema = z.object({
   partsReimbursementForfeited: z.boolean(),
 });
 
+export type MechanicJobListStatus = z.infer<typeof mechanicJobListStatusSchema>;
 export type MechanicJobView = z.infer<typeof mechanicJobViewSchema>;
 
 export const mechanicJobDetailSchema = mechanicJobViewSchema.extend({

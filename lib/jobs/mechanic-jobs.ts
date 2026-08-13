@@ -12,11 +12,14 @@ import {
   formatVehicleLabel,
 } from "@/lib/jobs/mechanic-job-format";
 import {
+  classifyMechanicJobListStatus,
+  DASHBOARD_QUERY_STATUSES,
+} from "@/lib/jobs/mechanic-dashboard-status";
+import {
   buildJobSchedulingFields,
   resolveDriverForJob,
 } from "@/lib/jobs/mechanic-view";
-import { JOB_STATUS, jobStatusOr } from "@/lib/jobs/status";
-import { ACTIVE_SERVICE_STATUSES } from "@/lib/jobs/transitions";
+import { jobStatusOr } from "@/lib/jobs/status";
 import { mechanicLinkedToJob } from "@/lib/service/guards";
 import type {
   MechanicJobListItem,
@@ -27,39 +30,9 @@ import type {
 import type { MechanicJobView } from "@/types/api/mechanic-job-view";
 import type { AirtableRecord } from "@/types/airtable/common";
 import { FIELDS } from "@/types/airtable/generated/fields";
-import type { JobsStatus } from "@/types/airtable/generated/enums";
 import type { JobFields } from "@/types/airtable/jobs";
 
-const MECHANIC_DASHBOARD_ACTIVE_STATUSES: readonly JobsStatus[] = [
-  JOB_STATUS.matched_awaiting_payment,
-  ...ACTIVE_SERVICE_STATUSES,
-];
-
-const MECHANIC_DASHBOARD_COMPLETED_STATUSES: readonly JobsStatus[] = [
-  JOB_STATUS.completed_pending_confirmation,
-  JOB_STATUS.confirmed,
-  JOB_STATUS.disputed,
-  JOB_STATUS.refunded,
-];
-
-const DASHBOARD_QUERY_STATUSES: readonly JobsStatus[] = [
-  ...MECHANIC_DASHBOARD_ACTIVE_STATUSES,
-  ...MECHANIC_DASHBOARD_COMPLETED_STATUSES,
-];
-
-export function classifyMechanicJobListStatus(
-  status: JobsStatus,
-): MechanicJobListStatus | null {
-  if ((MECHANIC_DASHBOARD_ACTIVE_STATUSES as readonly string[]).includes(status)) {
-    return "active";
-  }
-  if (
-    (MECHANIC_DASHBOARD_COMPLETED_STATUSES as readonly string[]).includes(status)
-  ) {
-    return "completed";
-  }
-  return null;
-}
+export { classifyMechanicJobListStatus };
 
 function buildStatusFilterFormula(): string {
   if (DASHBOARD_QUERY_STATUSES.length === 1) {

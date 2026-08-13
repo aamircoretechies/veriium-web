@@ -36,6 +36,7 @@ import { resolve } from "node:path";
 import type Stripe from "stripe";
 
 import type { SendSmsResult } from "@/lib/twilio/sms";
+import type { ActionItemFields } from "@/types/airtable/action-items";
 import type { MechanicFields } from "@/types/airtable/mechanics";
 import {
   ACTION_ITEM_TYPE,
@@ -1201,7 +1202,7 @@ async function main(): Promise<void> {
         "availability_status offline",
       );
 
-      const actionItems = await client.listRecords("action-items", {
+      const actionItems = await client.listRecords<ActionItemFields>("action-items", {
         filterByFormula: `AND({status} = 'open', {type} = '${ACTION_ITEM_TYPE.MECHANIC_AVAILABILITY_INACTIVE}')`,
         maxRecords: 100,
       });

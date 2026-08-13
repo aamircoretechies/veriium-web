@@ -8,10 +8,8 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import type {
-  MechanicMeResponse,
-  SetMechanicAvailabilityResponse,
-} from "@/types/api/mechanic-auth";
+import type { MechanicMeResponse } from "@/types/api/mechanic-dashboard";
+import type { SetMechanicAvailabilityResponse } from "@/types/api/mechanic-auth";
 
 export type MechanicAccountState =
   | "application_submitted"

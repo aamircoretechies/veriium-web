@@ -11,7 +11,7 @@ import {
   formatJobTitle,
   formatMechanicJobStatusLabel,
 } from "@/lib/jobs/mechanic-job-format";
-import { classifyMechanicJobListStatus } from "@/lib/jobs/mechanic-jobs";
+import { classifyMechanicJobListStatus } from "@/lib/jobs/mechanic-dashboard-status";
 import { parseQuoteDetails } from "@/lib/jobs/quote-details";
 import { jobStatusOr } from "@/lib/jobs/status";
 import { buildJobSmsContext } from "@/lib/matching/job-context";
