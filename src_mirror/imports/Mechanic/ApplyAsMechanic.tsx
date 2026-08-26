@@ -12,6 +12,54 @@ import { Switch } from '@/app/components/ui/switch';
 import Footer from '../../../app/components/Footer';
 import PublicHeader from '@/app/components/PublicHeader';
 import { GWINNETT_ZIP_LOCATIONS } from '@/lib/constants/gwinnett-zips';
+import { isValidUsPhone } from '@/lib/phone';
+import {
+  BIO_MAX,
+  type ApplyFormFieldErrors,
+  EMAIL_MAX,
+  formatPhoneInput,
+  FULL_NAME_MAX,
+  LANGUAGES_MAX,
+  OTHER_CERTS_MAX,
+  sanitizeBioInput,
+  sanitizeEmailInput,
+  sanitizeLanguagesInput,
+  sanitizeNameInput,
+  sanitizeOtherCertsInput,
+  sanitizePublicValidationMessage,
+  sanitizeYearsInput,
+  validateApplyTextFields,
+  YEARS_EXPERIENCE_MAX,
+} from '@/lib/mechanics/apply-form';
+
+function FieldMeta({
+  error,
+  hint,
+  count,
+  max,
+}: {
+  error?: string;
+  hint?: string;
+  count?: number;
+  max?: number;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 min-h-[1.25rem]">
+      {error ? (
+        <p className="text-sm text-red-600 font-['Albert_Sans:Regular',sans-serif]">{error}</p>
+      ) : hint ? (
+        <p className="text-xs text-gray-500 font-['Albert_Sans:Regular',sans-serif]">{hint}</p>
+      ) : (
+        <span />
+      )}
+      {max != null && count != null && (
+        <p className="text-xs text-gray-400 font-['Albert_Sans:Regular',sans-serif] shrink-0 ml-auto">
+          {count}/{max}
+        </p>
+      )}
+    </div>
+  );
+}
 
 const GWINNETT_ZIPS = GWINNETT_ZIP_LOCATIONS.map(({ zip, city }) => ({
   zip,
@@ -21,7 +69,8 @@ const GWINNETT_ZIPS = GWINNETT_ZIP_LOCATIONS.map(({ zip, city }) => ({
 async function parseApiError(res: Response): Promise<string> {
   try {
     const data = await res.json();
-    return data?.error?.message ?? "Something went wrong. Please try again.";
+    const message = data?.error?.message ?? "Something went wrong. Please try again.";
+    return sanitizePublicValidationMessage(message);
   } catch {
     return "Something went wrong. Please try again.";
   }
@@ -32,6 +81,7 @@ export default function ApplyAsMechanic() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<ApplyFormFieldErrors>({});
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [driverLicenseFile, setDriverLicenseFile] = useState<File | null>(null);
   const [aseCertificationFile, setAseCertificationFile] = useState<File | null>(null);
@@ -74,6 +124,15 @@ export default function ApplyAsMechanic() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const clearFieldError = (field: keyof ApplyFormFieldErrors) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
   const handleServiceChange = (service: string, checked: boolean) => {
     setFormData(prev => ({
       ...prev,
@@ -90,6 +149,23 @@ export default function ApplyAsMechanic() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const nextFieldErrors = validateApplyTextFields({
+      fullName: formData.fullName,
+      phoneValid: isValidUsPhone(formData.phone),
+      email: formData.email,
+      yearsExp: formData.yearsExp,
+      bio: formData.bio,
+      languages: formData.languages,
+      otherCerts: formData.otherCerts,
+    });
+    setFieldErrors(nextFieldErrors);
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setSubmitError("Please fix the highlighted fields before submitting.");
+      const firstInvalid = document.getElementById(Object.keys(nextFieldErrors)[0]!);
+      firstInvalid?.focus();
+      firstInvalid?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     if (!formData.agreements.terms || !formData.agreements.background || !formData.agreements.communication) {
       alert("Please agree to all terms and consents to proceed.");
       return;
@@ -240,16 +316,59 @@ export default function ApplyAsMechanic() {
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="fullName" className="font-['Albert_Sans:Medium',sans-serif]">Full Name *</Label>
-                  <Input id="fullName" required value={formData.fullName} onChange={e => handleInputChange('fullName', e.target.value)} placeholder="John Doe" />
+                  <Input
+                    id="fullName"
+                    required
+                    autoComplete="name"
+                    maxLength={FULL_NAME_MAX}
+                    value={formData.fullName}
+                    aria-invalid={!!fieldErrors.fullName}
+                    onChange={(e) => {
+                      handleInputChange("fullName", sanitizeNameInput(e.target.value));
+                      clearFieldError("fullName");
+                    }}
+                    placeholder="John Doe"
+                  />
+                  <FieldMeta error={fieldErrors.fullName} count={formData.fullName.length} max={FULL_NAME_MAX} />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="phone" className="font-['Albert_Sans:Medium',sans-serif]">Phone Number *</Label>
-                  <Input id="phone" type="tel" required value={formData.phone} onChange={e => handleInputChange('phone', e.target.value)} placeholder="(555) 123-4567" />
+                  <Input
+                    id="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    required
+                    maxLength={14}
+                    value={formData.phone}
+                    aria-invalid={!!fieldErrors.phone}
+                    onChange={(e) => {
+                      handleInputChange("phone", formatPhoneInput(e.target.value));
+                      clearFieldError("phone");
+                    }}
+                    placeholder="(555) 123-4567"
+                  />
+                  <FieldMeta error={fieldErrors.phone} />
                 </div>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="email" className="font-['Albert_Sans:Medium',sans-serif]">Email Address *</Label>
-                <Input id="email" type="email" required value={formData.email} onChange={e => handleInputChange('email', e.target.value)} placeholder="john@example.com" />
+                <Input
+                  id="email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  required
+                  maxLength={EMAIL_MAX}
+                  value={formData.email}
+                  aria-invalid={!!fieldErrors.email}
+                  onChange={(e) => {
+                    handleInputChange("email", sanitizeEmailInput(e.target.value));
+                    clearFieldError("email");
+                  }}
+                  placeholder="john@example.com"
+                />
+                <FieldMeta error={fieldErrors.email} count={formData.email.length} max={EMAIL_MAX} />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="profilePhoto" className="font-['Albert_Sans:Medium',sans-serif]">Profile Photo (Optional)</Label>
@@ -270,15 +389,62 @@ export default function ApplyAsMechanic() {
             <CardContent className="pt-6 grid gap-6">
               <div className="grid gap-2">
                 <Label htmlFor="yearsExp" className="font-['Albert_Sans:Medium',sans-serif]">Years of Experience *</Label>
-                <Input id="yearsExp" type="number" min="0" required value={formData.yearsExp} onChange={e => handleInputChange('yearsExp', e.target.value)} placeholder="e.g. 5" />
+                <Input
+                  id="yearsExp"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  required
+                  maxLength={2}
+                  value={formData.yearsExp}
+                  aria-invalid={!!fieldErrors.yearsExp}
+                  onChange={(e) => {
+                    handleInputChange("yearsExp", sanitizeYearsInput(e.target.value));
+                    clearFieldError("yearsExp");
+                  }}
+                  onKeyDown={(e) => {
+                    if (["e", "E", "+", "-", ".", ","].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  placeholder="e.g. 5"
+                />
+                <FieldMeta
+                  error={fieldErrors.yearsExp}
+                  hint={`Whole numbers from 0 to ${YEARS_EXPERIENCE_MAX}.`}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="bio" className="font-['Albert_Sans:Medium',sans-serif]">Professional Bio / About Me *</Label>
-                <Textarea id="bio" required value={formData.bio} onChange={e => handleInputChange('bio', e.target.value)} placeholder="Tell drivers about your experience and expertise..." className="h-24" />
+                <Textarea
+                  id="bio"
+                  required
+                  maxLength={BIO_MAX}
+                  value={formData.bio}
+                  aria-invalid={!!fieldErrors.bio}
+                  onChange={(e) => {
+                    handleInputChange("bio", sanitizeBioInput(e.target.value));
+                    clearFieldError("bio");
+                  }}
+                  placeholder="Tell drivers about your experience and expertise..."
+                  className="h-24"
+                />
+                <FieldMeta error={fieldErrors.bio} count={formData.bio.length} max={BIO_MAX} />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="languages" className="font-['Albert_Sans:Medium',sans-serif]">Languages Spoken</Label>
-                <Input id="languages" value={formData.languages} onChange={e => handleInputChange('languages', e.target.value)} placeholder="English, Spanish, etc." />
+                <Input
+                  id="languages"
+                  maxLength={LANGUAGES_MAX}
+                  value={formData.languages}
+                  aria-invalid={!!fieldErrors.languages}
+                  onChange={(e) => {
+                    handleInputChange("languages", sanitizeLanguagesInput(e.target.value));
+                    clearFieldError("languages");
+                  }}
+                  placeholder="English, Spanish, etc."
+                />
+                <FieldMeta error={fieldErrors.languages} count={formData.languages.length} max={LANGUAGES_MAX} />
               </div>
               <div className="flex items-center space-x-2">
                 <Switch id="aseCertified" checked={formData.aseCertified} onCheckedChange={c => handleInputChange('aseCertified', c)} />
@@ -286,7 +452,18 @@ export default function ApplyAsMechanic() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="otherCerts" className="font-['Albert_Sans:Medium',sans-serif]">Other Certifications</Label>
-                <Input id="otherCerts" value={formData.otherCerts} onChange={e => handleInputChange('otherCerts', e.target.value)} placeholder="List any other relevant certifications" />
+                <Input
+                  id="otherCerts"
+                  maxLength={OTHER_CERTS_MAX}
+                  value={formData.otherCerts}
+                  aria-invalid={!!fieldErrors.otherCerts}
+                  onChange={(e) => {
+                    handleInputChange("otherCerts", sanitizeOtherCertsInput(e.target.value));
+                    clearFieldError("otherCerts");
+                  }}
+                  placeholder="List any other relevant certifications"
+                />
+                <FieldMeta error={fieldErrors.otherCerts} count={formData.otherCerts.length} max={OTHER_CERTS_MAX} />
               </div>
             </CardContent>
           </Card>
@@ -481,7 +658,11 @@ export default function ApplyAsMechanic() {
             <h3 className="font-['Albert_Sans:Bold',sans-serif] text-xl mb-2">Ready to submit?</h3>
             <p className="text-gray-500 mb-6 text-center font-['Albert_Sans:Regular',sans-serif]">Please review your information before submitting. You will not be able to edit this after submission.</p>
             {submitError && (
-              <p className="text-red-600 text-sm mb-4 text-center font-['Albert_Sans:Regular',sans-serif]">{submitError}</p>
+              <div className="text-red-600 text-sm mb-4 text-center font-['Albert_Sans:Regular',sans-serif] space-y-1">
+                {submitError.split("\n").filter(Boolean).map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
             )}
             <Button 
               type="submit" 

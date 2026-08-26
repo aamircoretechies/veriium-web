@@ -1,8 +1,8 @@
-import { z } from "zod";
 import {
   DuplicatePhoneError,
   submitMechanicApplication,
 } from "@/lib/mechanics/apply";
+import { formatApplyValidationIssues } from "@/lib/mechanics/apply-form";
 import { InvalidZipError } from "@/lib/mechanics/errors";
 import { InvalidPhoneError } from "@/lib/phone";
 import { jsonError, jsonOk } from "@/lib/api/response";
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     return jsonError(
       400,
       "validation_error",
-      z.prettifyError(parsed.error),
+      formatApplyValidationIssues(parsed.error.issues),
     );
   }
 
