@@ -2,14 +2,45 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { uploadToCloudinary } from "@/lib/cloudinary/upload";
+import {
+  DETAILS_MAX,
+  EMAIL_MAX,
+  FULL_NAME_MAX,
+  MAKE_MAX,
+  MODEL_MAX,
+  OTP_LENGTH,
+  PHONE_INPUT_MAX,
+  VIN_OR_PLATE_MAX,
+  ZIP_MAX,
+  type BookingFormFieldErrors,
+  firstBookingFieldError,
+  formatPhoneInput,
+  sanitizeDetailsInput,
+  sanitizeEmailInput,
+  sanitizeMakeInput,
+  sanitizeModelInput,
+  sanitizeNameInput,
+  sanitizeOtpInput,
+  sanitizeVehicleYearInput,
+  sanitizeVinOrPlateInput,
+  sanitizeZipInput,
+  validateBookingFormFields,
+} from "@/lib/bookings/booking-form";
 import { saveScheduleLaterIntake } from "@/lib/bookings/schedule-later-intake";
-import { GWINNETT_ZIP_CODES } from "@/lib/constants/gwinnett-zips";
 import type { BookingResponse } from "@/types/api/booking";
 import type { DiagnosisResponse } from "@/types/api/diagnosis";
 import type { FixNowVsWait } from "@/types/airtable/enums";
 
-const GWINNETT_ZIP_SET = new Set<string>(GWINNETT_ZIP_CODES);
 const MAX_ATTACHMENTS = 5;
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p className="text-[12px] text-red-500 mt-1 font-['Albert_Sans:Regular',sans-serif]">
+      {message}
+    </p>
+  );
+}
 
 async function parseApiError(res: Response): Promise<string> {
   try {
@@ -61,6 +92,7 @@ export default function DiagnosticModal({
   const [otpSent, setOtpSent] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<BookingFormFieldErrors>({});
   const [loading, setLoading] = useState(false);
   const [attachmentUrls, setAttachmentUrls] = useState<string[]>([]);
   const [attachmentNames, setAttachmentNames] = useState<string[]>([]);
@@ -73,28 +105,40 @@ export default function DiagnosticModal({
       process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
   );
 
-  function validateForm(): string | null {
-    if (!name.trim()) return "Please enter your name.";
-    const zipTrimmed = zip.trim();
-    if (!/^\d{5}$/.test(zipTrimmed)) return "ZIP code must be 5 digits.";
-    if (!GWINNETT_ZIP_SET.has(zipTrimmed)) {
-      return "This ZIP code is outside our current service area.";
+  function bookingValues() {
+    return {
+      name,
+      zip,
+      phone,
+      email,
+      year,
+      make,
+      model,
+      vin,
+      details,
+      smsConsent,
+      phoneConsent,
+    };
+  }
+
+  function applyFieldErrors(errors: BookingFormFieldErrors): boolean {
+    setFieldErrors(errors);
+    const first = firstBookingFieldError(errors);
+    if (first) {
+      setError(first);
+      return true;
     }
-    if (!phone.trim()) return "Please enter your phone number.";
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return "Please enter a valid email address.";
-    }
-    if (year.trim()) {
-      const yearNum = Number(year.trim());
-      if (!Number.isInteger(yearNum) || yearNum <= 0) {
-        return "Please enter a valid vehicle year.";
-      }
-    }
-    if (!smsConsent) return "Please agree to receive request related SMS texts.";
-    if (!phoneConsent) {
-      return "Please acknowledge that providing your phone number creates a Veriium account.";
-    }
-    return null;
+    setError("");
+    return false;
+  }
+
+  function clearFieldError(field: keyof BookingFormFieldErrors) {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
   }
 
   async function handleMediaSelect(files: FileList | null) {
@@ -148,13 +192,13 @@ export default function DiagnosticModal({
   }
 
   async function handleSendCode() {
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
+    const errors = validateBookingFormFields(bookingValues(), {
+      requireContact: true,
+      requireConsents: true,
+    });
+    if (applyFieldErrors(errors)) {
       return;
     }
-
-    setError("");
     setLoading(true);
 
     try {
@@ -179,12 +223,17 @@ export default function DiagnosticModal({
   }
 
   async function handleSubmitBooking() {
-    if (!/^\d{6}$/.test(verificationCode)) {
-      setError("Please enter the 6-digit code we sent to your phone.");
+    const errors = validateBookingFormFields(
+      { ...bookingValues(), verificationCode },
+      {
+        requireContact: true,
+        requireConsents: true,
+        requireOtp: true,
+      },
+    );
+    if (applyFieldErrors(errors)) {
       return;
     }
-
-    setError("");
     setLoading(true);
 
     const vehicle =
@@ -241,6 +290,14 @@ export default function DiagnosticModal({
   }
 
   function handleScheduleLaterClick() {
+    const errors = validateBookingFormFields(bookingValues(), {
+      requireContact: false,
+      requireConsents: false,
+    });
+    if (applyFieldErrors(errors)) {
+      return;
+    }
+
     const vehicle =
       year.trim() || make.trim() || model.trim() || vin.trim()
         ? {
@@ -381,11 +438,18 @@ export default function DiagnosticModal({
               </label>
               <input
                 type="text"
-                placeholder="John"
+                autoComplete="name"
+                maxLength={FULL_NAME_MAX}
+                placeholder="John Smith"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                aria-invalid={!!fieldErrors.name}
+                onChange={(e) => {
+                  setName(sanitizeNameInput(e.target.value));
+                  clearFieldError("name");
+                }}
                 className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 font-['Albert_Sans:Regular',sans-serif]"
               />
+              <FieldError message={fieldErrors.name} />
             </div>
             <div>
               <label className="block text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1.5">
@@ -393,11 +457,19 @@ export default function DiagnosticModal({
               </label>
               <input
                 type="text"
-                placeholder="200100"
+                inputMode="numeric"
+                autoComplete="postal-code"
+                maxLength={ZIP_MAX}
+                placeholder="30043"
                 value={zip}
-                onChange={(e) => setZip(e.target.value)}
+                aria-invalid={!!fieldErrors.zip}
+                onChange={(e) => {
+                  setZip(sanitizeZipInput(e.target.value));
+                  clearFieldError("zip");
+                }}
                 className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 font-['Albert_Sans:Regular',sans-serif]"
               />
+              <FieldError message={fieldErrors.zip} />
             </div>
             <div>
               <label className="block text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1.5">
@@ -409,15 +481,20 @@ export default function DiagnosticModal({
                 </span>
                 <input
                   type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  maxLength={PHONE_INPUT_MAX}
                   placeholder="(000) 000-0000"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  aria-invalid={!!fieldErrors.phone}
+                  onChange={(e) => {
+                    setPhone(formatPhoneInput(e.target.value));
+                    clearFieldError("phone");
+                  }}
                   className="flex-1 min-w-0 border border-[#d2d2d2] rounded-r-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 font-['Albert_Sans:Regular',sans-serif]"
                 />
               </div>
-              <p className="text-[11px] text-[#aaa] mt-1 font-['Albert_Sans:Regular',sans-serif]">
-                ⓘ Only is the standard
-              </p>
+              <FieldError message={fieldErrors.phone} />
             </div>
             <div>
               <label className="block text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1.5">
@@ -425,11 +502,19 @@ export default function DiagnosticModal({
               </label>
               <input
                 type="email"
+                inputMode="email"
+                autoComplete="email"
+                maxLength={EMAIL_MAX}
                 placeholder="johnsmith@gmail.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                aria-invalid={!!fieldErrors.email}
+                onChange={(e) => {
+                  setEmail(sanitizeEmailInput(e.target.value));
+                  clearFieldError("email");
+                }}
                 className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 font-['Albert_Sans:Regular',sans-serif]"
               />
+              <FieldError message={fieldErrors.email} />
             </div>
           </div>
 
@@ -441,11 +526,18 @@ export default function DiagnosticModal({
               </label>
               <input
                 type="text"
+                inputMode="numeric"
+                maxLength={4}
                 placeholder="e.g. 2018"
                 value={year}
-                onChange={(e) => setYear(e.target.value)}
+                aria-invalid={!!fieldErrors.year}
+                onChange={(e) => {
+                  setYear(sanitizeVehicleYearInput(e.target.value));
+                  clearFieldError("year");
+                }}
                 className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 font-['Albert_Sans:Regular',sans-serif]"
               />
+              <FieldError message={fieldErrors.year} />
             </div>
             <div>
               <label className="block text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1.5">
@@ -453,11 +545,17 @@ export default function DiagnosticModal({
               </label>
               <input
                 type="text"
+                maxLength={MAKE_MAX}
                 placeholder="e.g. Toyota"
                 value={make}
-                onChange={(e) => setMake(e.target.value)}
+                aria-invalid={!!fieldErrors.make}
+                onChange={(e) => {
+                  setMake(sanitizeMakeInput(e.target.value));
+                  clearFieldError("make");
+                }}
                 className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 font-['Albert_Sans:Regular',sans-serif]"
               />
+              <FieldError message={fieldErrors.make} />
             </div>
             <div>
               <label className="block text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1.5">
@@ -465,11 +563,17 @@ export default function DiagnosticModal({
               </label>
               <input
                 type="text"
+                maxLength={MODEL_MAX}
                 placeholder="e.g. Camry"
                 value={model}
-                onChange={(e) => setModel(e.target.value)}
+                aria-invalid={!!fieldErrors.model}
+                onChange={(e) => {
+                  setModel(sanitizeModelInput(e.target.value));
+                  clearFieldError("model");
+                }}
                 className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 font-['Albert_Sans:Regular',sans-serif]"
               />
+              <FieldError message={fieldErrors.model} />
             </div>
             <div>
               <label className="block text-[13px] font-['Albert_Sans:SemiBold',sans-serif] font-semibold text-black mb-1.5">
@@ -477,11 +581,17 @@ export default function DiagnosticModal({
               </label>
               <input
                 type="text"
+                maxLength={VIN_OR_PLATE_MAX}
                 placeholder="Optional"
                 value={vin}
-                onChange={(e) => setVin(e.target.value)}
+                aria-invalid={!!fieldErrors.vin}
+                onChange={(e) => {
+                  setVin(sanitizeVinOrPlateInput(e.target.value));
+                  clearFieldError("vin");
+                }}
                 className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 font-['Albert_Sans:Regular',sans-serif]"
               />
+              <FieldError message={fieldErrors.vin} />
             </div>
           </div>
 
@@ -493,10 +603,21 @@ export default function DiagnosticModal({
             <textarea
               placeholder="Add any other details about this issue"
               value={details}
-              onChange={(e) => setDetails(e.target.value)}
+              maxLength={DETAILS_MAX}
+              aria-invalid={!!fieldErrors.details}
+              onChange={(e) => {
+                setDetails(sanitizeDetailsInput(e.target.value));
+                clearFieldError("details");
+              }}
               rows={4}
               className="w-full border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 resize-none font-['Albert_Sans:Regular',sans-serif]"
             />
+            <div className="flex items-start justify-between gap-2 mt-1">
+              <FieldError message={fieldErrors.details} />
+              <p className="text-[11px] text-[#aaa] font-['Albert_Sans:Regular',sans-serif] ml-auto">
+                {details.length}/{DETAILS_MAX}
+              </p>
+            </div>
           </div>
 
           {/* Photos/Videos */}
@@ -609,7 +730,10 @@ export default function DiagnosticModal({
               <input
                 type="checkbox"
                 checked={smsConsent}
-                onChange={(e) => setSmsConsent(e.target.checked)}
+                onChange={(e) => {
+                  setSmsConsent(e.target.checked);
+                  clearFieldError("smsConsent");
+                }}
                 className="mt-[3px] accent-[#ffa270] shrink-0"
               />
               <span className="text-[13px] text-[#555] font-['Albert_Sans:Regular',sans-serif] leading-[1.5]">
@@ -620,13 +744,17 @@ export default function DiagnosticModal({
               <input
                 type="checkbox"
                 checked={phoneConsent}
-                onChange={(e) => setPhoneConsent(e.target.checked)}
+                onChange={(e) => {
+                  setPhoneConsent(e.target.checked);
+                  clearFieldError("phoneConsent");
+                }}
                 className="mt-[3px] accent-[#ffa270] shrink-0"
               />
               <span className="text-[13px] text-[#555] font-['Albert_Sans:Regular',sans-serif] leading-[1.5]">
                 I understand that providing my phone number will automatically create an account in Veriium *
               </span>
             </label>
+            <FieldError message={fieldErrors.smsConsent || fieldErrors.phoneConsent} />
           </div>
 
           {otpSent && (
@@ -637,16 +765,19 @@ export default function DiagnosticModal({
               <input
                 type="text"
                 inputMode="numeric"
-                pattern="\d{6}"
-                maxLength={6}
+                pattern={`\\d{${OTP_LENGTH}}`}
+                maxLength={OTP_LENGTH}
                 placeholder="000000"
                 value={verificationCode}
-                onChange={(e) =>
-                  setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-                }
+                aria-invalid={!!fieldErrors.verificationCode}
+                onChange={(e) => {
+                  setVerificationCode(sanitizeOtpInput(e.target.value));
+                  clearFieldError("verificationCode");
+                }}
                 className="w-full max-w-[200px] border border-[#d2d2d2] rounded-[8px] px-3 py-2.5 text-[14px] text-black placeholder:text-[#bbb] outline-none focus:border-[#ffa270] transition-colors duration-150 tracking-[0.3em] text-center font-['Albert_Sans:Regular',sans-serif]"
                 autoFocus
               />
+              <FieldError message={fieldErrors.verificationCode} />
               <p className="text-[12px] text-[#888] mt-1.5 font-['Albert_Sans:Regular',sans-serif]">
                 Enter the 6-digit code sent to your phone.
               </p>
@@ -656,6 +787,7 @@ export default function DiagnosticModal({
                   setOtpSent(false);
                   setVerificationCode("");
                   setError("");
+                  clearFieldError("verificationCode");
                 }}
                 className="text-[12px] text-[#888] hover:text-black transition-colors mt-1 bg-transparent border-none cursor-pointer p-0 font-['Albert_Sans:Regular',sans-serif]"
               >

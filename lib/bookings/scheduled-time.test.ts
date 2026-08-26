@@ -6,6 +6,7 @@ import { InvalidScheduledTimeError } from "./errors";
 import {
   buildScheduledTimeIso,
   formatScheduledTimeForDisplay,
+  isFutureScheduleSlot,
 } from "./scheduled-time";
 import { validateBookingIntake } from "./validate-intake";
 
@@ -27,6 +28,14 @@ describe("buildScheduledTimeIso", () => {
 
     assert.match(iso, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     assert.ok(Date.parse(iso) > now.getTime());
+  });
+});
+
+describe("isFutureScheduleSlot", () => {
+  it("rejects a same-day morning slot after that window has passed", () => {
+    const now = new Date("2026-07-24T16:00:00.000Z"); // 12:00 Eastern
+    assert.equal(isFutureScheduleSlot(7, 24, "morning", now), false);
+    assert.equal(isFutureScheduleSlot(7, 24, "evening", now), true);
   });
 });
 

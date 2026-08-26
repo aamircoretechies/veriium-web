@@ -2,6 +2,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DiagnosisResponse } from "@/types/api/diagnosis";
+import {
+  DIAGNOSIS_EMPTY_INPUT_MESSAGE,
+} from "@/lib/diagnosis/errors";
+import {
+  DIAGNOSIS_INPUT_MAX,
+  sanitizeDiagnosisInput,
+} from "@/lib/diagnosis/validate-input";
 import svgPaths from "./svg-g4c32cbyyy";
 import DiagnosticModal from "./DiagnosticModal";
 import Footer from "../../../app/components/Footer";
@@ -86,7 +93,8 @@ function TextField({
           <input
             type="text"
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            maxLength={DIAGNOSIS_INPUT_MAX}
+            onChange={(e) => onChange(sanitizeDiagnosisInput(e.target.value))}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !disabled) {
                 onStartDiagnosis?.();
@@ -597,6 +605,12 @@ export default function LandingDesktopV2() {
 
   const handleStartDiagnosis = async () => {
     if (isDiagnosing) return;
+
+    const trimmed = symptomInput.trim();
+    if (!trimmed) {
+      setDiagnosisError(DIAGNOSIS_EMPTY_INPUT_MESSAGE);
+      return;
+    }
 
     setDiagnosisError(null);
     setIsDiagnosing(true);

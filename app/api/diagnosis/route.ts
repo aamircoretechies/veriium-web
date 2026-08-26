@@ -17,7 +17,11 @@ export async function POST(request: Request) {
 
   const parsed = diagnosisRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return jsonError(400, "validation_error", DIAGNOSIS_EMPTY_INPUT_MESSAGE);
+    return jsonError(
+      400,
+      "validation_error",
+      parsed.error.issues[0]?.message ?? DIAGNOSIS_EMPTY_INPUT_MESSAGE,
+    );
   }
 
   try {

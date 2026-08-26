@@ -66,7 +66,7 @@ function normalizeVehicle(
     year: vehicle.year,
     make: vehicle.make?.trim() || undefined,
     model: vehicle.model?.trim() || undefined,
-    vin: vehicle.vin?.trim() || undefined,
+    vin: vehicle.vin?.trim().toUpperCase() || undefined,
   };
 
   if (

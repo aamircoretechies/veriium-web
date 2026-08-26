@@ -6,7 +6,13 @@ import {
 } from "./errors";
 import { CAR_KEYWORDS, SAFETY_KEYWORDS } from "./keywords";
 
+export const DIAGNOSIS_INPUT_MAX = 500;
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g;
 const ENGLISH_TOKEN_PATTERN = /[a-zA-Z]{2,}/g;
+
+export function sanitizeDiagnosisInput(value: string): string {
+  return value.replace(CONTROL_CHARS, "").slice(0, DIAGNOSIS_INPUT_MAX);
+}
 
 export type ValidationRuleTriggered = "none" | "R3";
 

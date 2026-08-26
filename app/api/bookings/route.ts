@@ -1,6 +1,6 @@
-import { z } from "zod";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { InvalidOtpError } from "@/lib/auth/driver-otp";
+import { formatBookingValidationIssues } from "@/lib/bookings/booking-form";
 import { createBooking } from "@/lib/bookings/create";
 import {
   DiagnosisNotFoundError,
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return jsonError(
       400,
       "validation_error",
-      z.prettifyError(parsed.error),
+      formatBookingValidationIssues(parsed.error.issues),
     );
   }
 

@@ -94,6 +94,25 @@ export function buildScheduledTimeIso(
   return easternDateTimeToUtcIso(year, month, day, hour, minute);
 }
 
+export function isScheduleTimeSlot(value: string): value is ScheduleTimeSlot {
+  return (SCHEDULE_TIME_SLOTS as readonly string[]).includes(value);
+}
+
+/** True when the slot resolves to a time after `now` (same rule as booking intake). */
+export function isFutureScheduleSlot(
+  month: number,
+  day: number,
+  timeSlot: ScheduleTimeSlot,
+  now = new Date(),
+): boolean {
+  try {
+    const iso = buildScheduledTimeIso(month, day, timeSlot, now);
+    return Date.parse(iso) > now.getTime();
+  } catch {
+    return false;
+  }
+}
+
 export function formatScheduledTimeForDisplay(
   scheduledTimeIso: string,
   now = new Date(),
